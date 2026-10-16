@@ -1,0 +1,234 @@
+version: 2
+
+models:
+  # ============================================================ DIMENSIONS
+  - name: dim_date
+    description: "Calendrier (un jour par ligne) 2013-2016, libellés de mois et de jours en français."
+    columns:
+      - name: date_day
+        description: "Date du jour (clé de la dimension)."
+        data_tests: [unique, not_null]
+      - name: year
+        description: "Année."
+      - name: quarter
+        description: "Trimestre (1 à 4)."
+      - name: month
+        description: "Numéro du mois (1 à 12)."
+      - name: month_name
+        description: "Nom du mois en français."
+      - name: year_month
+        description: "Année-mois au format AAAA-MM."
+      - name: is_weekend
+        description: "Vrai si samedi ou dimanche."
+
+  - name: dim_city
+    description: "Géographie : ville, province/État, territoire commercial, pays, continent."
+    columns:
+      - name: city_id
+        data_tests: [unique, not_null]
+      - name: country_name
+        data_tests: [not_null]
+
+  - name: dim_customer
+    description: "Clients avec catégorie, groupement d'achat et localisation de livraison."
+    columns:
+      - name: customer_id
+        description: "Identifiant du client."
+        data_tests: [unique, not_null]
+      - name: customer_name
+        description: "Nom du client."
+        data_tests: [not_null]
+      - name: customer_category
+        description: "Catégorie du client (supermarché, boutique de nouveautés, etc.)."
+      - name: buying_group
+        description: "Groupement d'achat (Tailspin Toys, Wingtip Toys ou Aucun)."
+      - name: sales_territory
+        description: "Territoire commercial de la ville de livraison."
+      - name: delivery_city_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_city')
+                field: city_id
+
+  - name: dim_product
+    description: "Produits (articles de stock) avec marque, couleur, conditionnement, groupe et fournisseur."
+    columns:
+      - name: stock_item_id
+        description: "Identifiant du produit."
+        data_tests: [unique, not_null]
+      - name: product_name
+        description: "Nom du produit."
+        data_tests: [not_null]
+      - name: main_stock_group
+        description: "Groupe principal du produit (T-Shirts, Mugs, Toys...)."
+      - name: unit_price
+        description: "Prix unitaire catalogue HT."
+      - name: supplier_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_supplier')
+                field: supplier_id
+
+  - name: dim_supplier
+    description: "Fournisseurs avec catégorie et localisation."
+    columns:
+      - name: supplier_id
+        data_tests: [unique, not_null]
+      - name: supplier_name
+        data_tests: [not_null]
+
+  - name: dim_employee
+    description: "Employés de Wide World Importers ; is_salesperson identifie les commerciaux."
+    columns:
+      - name: employee_id
+        data_tests: [unique, not_null]
+      - name: employee_name
+        data_tests: [not_null]
+
+  # ============================================================ FAITS
+  - name: fact_sales
+    description: "Ventes facturées — une ligne par ligne de facture. Source principale du chiffre d'affaires et de la marge."
+    columns:
+      - name: invoice_line_id
+        data_tests: [unique, not_null]
+      - name: invoice_date
+        description: "Date de facturation."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_id
+      - name: stock_item_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: stock_item_id
+      - name: salesperson_id
+        description: "Commercial ayant réalisé la vente."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_employee')
+                field: employee_id
+      - name: delivery_city_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_city')
+                field: city_id
+      - name: quantity
+        description: "Quantité vendue."
+      - name: amount_excluding_tax
+        description: "Chiffre d'affaires HT de la ligne (quantité x prix unitaire)."
+        data_tests: [not_null]
+      - name: tax_amount
+        description: "Montant de TVA."
+      - name: amount_including_tax
+        description: "Montant TTC de la ligne."
+      - name: profit
+        description: "Marge (bénéfice) de la ligne."
+
+  - name: fact_orders
+    description: "Commandes clients — une ligne par ligne de commande."
+    columns:
+      - name: order_line_id
+        data_tests: [unique, not_null]
+      - name: order_date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: customer_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_id
+      - name: stock_item_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: stock_item_id
+
+  - name: fact_purchases
+    description: "Achats fournisseurs — une ligne par ligne de bon de commande."
+    columns:
+      - name: purchase_order_line_id
+        data_tests: [unique, not_null]
+      - name: order_date
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: supplier_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_supplier')
+                field: supplier_id
+      - name: stock_item_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: stock_item_id
+
+  - name: fact_customer_transactions
+    description: "Transactions clients : factures, paiements, avoirs, avec solde restant dû."
+    columns:
+      - name: customer_transaction_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_id
+      - name: transaction_type
+        data_tests: [not_null]
+
+  - name: fact_stock_movements
+    description: "Mouvements de stock (entrées fournisseurs, sorties clients)."
+    columns:
+      - name: stock_item_transaction_id
+        data_tests: [unique, not_null]
+      - name: stock_item_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: stock_item_id
+      - name: direction
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Entrée', 'Sortie']
+
+  - name: fact_stock_holdings
+    description: "Photo du stock actuel par produit, avec valeur du stock et alerte de réapprovisionnement."
+    columns:
+      - name: stock_item_id
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: stock_item_id

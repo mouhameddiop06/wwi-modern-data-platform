@@ -1,0 +1,208 @@
+version: 2
+
+models:
+  - name: slv_cities
+    description: "Villes nettoyées."
+    columns:
+      - name: city_id
+        data_tests: [unique, not_null]
+      - name: state_province_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('slv_state_provinces')
+                field: state_province_id
+  - name: slv_state_provinces
+    description: "Provinces / États."
+    columns:
+      - name: state_province_id
+        data_tests: [unique, not_null]
+      - name: country_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('slv_countries')
+                field: country_id
+  - name: slv_countries
+    description: "Pays."
+    columns:
+      - name: country_id
+        data_tests: [unique, not_null]
+  - name: slv_people
+    description: "Personnes (employés, contacts) — données personnelles minimisées."
+    columns:
+      - name: person_id
+        data_tests: [unique, not_null]
+  - name: slv_delivery_methods
+    description: "Modes de livraison."
+    columns:
+      - name: delivery_method_id
+        data_tests: [unique, not_null]
+  - name: slv_payment_methods
+    description: "Moyens de paiement."
+    columns:
+      - name: payment_method_id
+        data_tests: [unique, not_null]
+  - name: slv_transaction_types
+    description: "Types de transaction."
+    columns:
+      - name: transaction_type_id
+        data_tests: [unique, not_null]
+  - name: slv_supplier_categories
+    description: "Catégories de fournisseurs."
+    columns:
+      - name: supplier_category_id
+        data_tests: [unique, not_null]
+  - name: slv_suppliers
+    description: "Fournisseurs (sans coordonnées bancaires)."
+    columns:
+      - name: supplier_id
+        data_tests: [unique, not_null]
+  - name: slv_purchase_orders
+    description: "En-têtes de bons de commande fournisseurs."
+    columns:
+      - name: purchase_order_id
+        data_tests: [unique, not_null]
+      - name: supplier_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('slv_suppliers')
+                field: supplier_id
+  - name: slv_purchase_order_lines
+    description: "Lignes de bons de commande fournisseurs."
+    columns:
+      - name: purchase_order_line_id
+        data_tests: [unique, not_null]
+      - name: purchase_order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('slv_purchase_orders')
+                field: purchase_order_id
+  - name: slv_supplier_transactions
+    description: "Transactions fournisseurs."
+    columns:
+      - name: supplier_transaction_id
+        data_tests: [unique, not_null]
+  - name: slv_customer_categories
+    description: "Catégories de clients."
+    columns:
+      - name: customer_category_id
+        data_tests: [unique, not_null]
+  - name: slv_buying_groups
+    description: "Groupements d'achat."
+    columns:
+      - name: buying_group_id
+        data_tests: [unique, not_null]
+  - name: slv_customers
+    description: "Clients."
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+  - name: slv_customer_transactions
+    description: "Transactions clients (factures, paiements)."
+    columns:
+      - name: customer_transaction_id
+        data_tests: [unique, not_null]
+  - name: slv_invoices
+    description: "En-têtes de factures."
+    columns:
+      - name: invoice_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('slv_customers')
+                field: customer_id
+  - name: slv_invoice_lines
+    description: "Lignes de factures avec montants HT / TVA / TTC normalisés."
+    columns:
+      - name: invoice_line_id
+        data_tests: [unique, not_null]
+      - name: invoice_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('slv_invoices')
+                field: invoice_id
+      - name: stock_item_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('slv_stock_items')
+                field: stock_item_id
+  - name: slv_orders
+    description: "En-têtes de commandes clients."
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('slv_customers')
+                field: customer_id
+  - name: slv_order_lines
+    description: "Lignes de commandes clients."
+    columns:
+      - name: order_line_id
+        data_tests: [unique, not_null]
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('slv_orders')
+                field: order_id
+      - name: stock_item_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('slv_stock_items')
+                field: stock_item_id
+  - name: slv_stock_items
+    description: "Articles de stock, pays de fabrication extrait du JSON."
+    columns:
+      - name: stock_item_id
+        data_tests: [unique, not_null]
+  - name: slv_stock_item_holdings
+    description: "Niveaux de stock actuels."
+    columns:
+      - name: stock_item_id
+        data_tests: [unique, not_null]
+  - name: slv_stock_item_transactions
+    description: "Mouvements de stock."
+    columns:
+      - name: stock_item_transaction_id
+        data_tests: [unique, not_null]
+  - name: slv_stock_groups
+    description: "Groupes d'articles."
+    columns:
+      - name: stock_group_id
+        data_tests: [unique, not_null]
+  - name: slv_stock_item_stock_groups
+    description: "Association articles / groupes."
+    columns:
+      - name: stock_item_stock_group_id
+        data_tests: [unique, not_null]
+  - name: slv_colors
+    description: "Couleurs."
+    columns:
+      - name: color_id
+        data_tests: [unique, not_null]
+  - name: slv_package_types
+    description: "Types de conditionnement."
+    columns:
+      - name: package_type_id
+        data_tests: [unique, not_null]

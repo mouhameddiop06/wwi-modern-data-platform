@@ -1,0 +1,22 @@
+# Ingestion
+dlt[snowflake,sql_database]>=1.5
+pyodbc>=5.1
+sqlalchemy>=2.0
+python-dotenv>=1.0
+pyarrow>=17
+psutil>=5.9
+
+# Transformation
+dbt-core>=1.10
+dbt-snowflake>=1.10
+
+# Orchestration
+dagster>=1.13
+dagster-webserver>=1.13
+dagster-dbt>=0.29
+dagster-dlt>=0.29
+
+# Application
+streamlit>=1.40
+pandas>=2.2
+requests>=2.32

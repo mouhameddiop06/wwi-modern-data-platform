@@ -1,0 +1,286 @@
+# Modèle sémantique Cortex Analyst — couche GOLD de Wide World Importers
+# Décrit les tables, les relations, les mesures et des requêtes vérifiées
+# afin que Cortex Analyst traduise les questions en SQL fiable.
+name: wwi_gold
+description: >
+  Entrepôt analytique de Wide World Importers, grossiste en articles de nouveauté
+  (jouets, mugs, t-shirts, emballages...). Couvre les ventes facturées, les commandes,
+  les achats fournisseurs, les paiements clients et les stocks, de janvier 2013 à mai 2016.
+  Les montants sont exprimés en dollars américains (USD).
+
+custom_instructions: >
+  Réponds toujours en français. Le « chiffre d'affaires » ou les « ventes » correspondent
+  par défaut au montant hors taxes (amount_excluding_tax) de fact_sales, sauf si
+  l'utilisateur demande explicitement le TTC. Le « bénéfice » ou la « marge » correspond
+  à la colonne profit. Pour les classements, trie par ordre décroissant et limite à 10
+  lignes si aucun nombre n'est précisé. Arrondis les montants à 2 décimales.
+
+tables:
+  # ================================================================ FAITS
+  - name: fact_sales
+    description: Ventes facturées, une ligne par ligne de facture. Source du chiffre d'affaires et du bénéfice.
+    base_table: {database: WWI_DB, schema: GOLD, table: FACT_SALES}
+    primary_key: {columns: [invoice_line_id]}
+    dimensions:
+      - {name: invoice_line_id, expr: invoice_line_id, data_type: number, description: Identifiant de la ligne de facture}
+      - {name: invoice_id, expr: invoice_id, data_type: number, description: Numéro de facture, synonyms: [facture]}
+      - {name: customer_id, expr: customer_id, data_type: number}
+      - {name: stock_item_id, expr: stock_item_id, data_type: number}
+      - {name: salesperson_id, expr: salesperson_id, data_type: number}
+      - {name: delivery_city_id, expr: delivery_city_id, data_type: number}
+      - {name: delivery_method, expr: delivery_method, data_type: varchar, description: Mode de livraison, synonyms: [mode de livraison]}
+      - {name: is_credit_note, expr: is_credit_note, data_type: boolean, description: Vrai si la facture est un avoir}
+    time_dimensions:
+      - {name: invoice_date, expr: invoice_date, data_type: date, description: Date de facturation (date de la vente), synonyms: [date de vente, date de facture, date]}
+    facts:
+      - {name: quantity, expr: quantity, data_type: number, description: Quantité vendue, synonyms: [quantité, volume, unités vendues]}
+      - {name: unit_price, expr: unit_price, data_type: number, description: Prix unitaire de vente HT}
+      - {name: amount_excluding_tax, expr: amount_excluding_tax, data_type: number, description: Chiffre d'affaires hors taxes de la ligne, synonyms: [chiffre d'affaires, CA, ventes, revenu, montant HT]}
+      - {name: tax_amount, expr: tax_amount, data_type: number, description: Montant de TVA, synonyms: [TVA, taxes]}
+      - {name: amount_including_tax, expr: amount_including_tax, data_type: number, description: Montant toutes taxes comprises, synonyms: [montant TTC, CA TTC]}
+      - {name: profit, expr: profit, data_type: number, description: Bénéfice de la ligne, synonyms: [bénéfice, marge, profit]}
+    metrics:
+      - {name: total_revenue, expr: SUM(amount_excluding_tax), description: Chiffre d'affaires total HT, synonyms: [chiffre d'affaires total, CA total]}
+      - {name: total_profit, expr: SUM(profit), description: Bénéfice total, synonyms: [marge totale]}
+      - {name: margin_rate, expr: "SUM(profit) / NULLIF(SUM(amount_excluding_tax), 0)", description: Taux de marge (bénéfice / CA HT), synonyms: [taux de marge]}
+      - {name: invoice_count, expr: COUNT(DISTINCT invoice_id), description: Nombre de factures, synonyms: [nombre de factures]}
+
+  - name: fact_orders
+    description: Commandes clients, une ligne par ligne de commande.
+    base_table: {database: WWI_DB, schema: GOLD, table: FACT_ORDERS}
+    primary_key: {columns: [order_line_id]}
+    dimensions:
+      - {name: order_line_id, expr: order_line_id, data_type: number}
+      - {name: order_id, expr: order_id, data_type: number, description: Numéro de commande, synonyms: [commande]}
+      - {name: customer_id, expr: customer_id, data_type: number}
+      - {name: stock_item_id, expr: stock_item_id, data_type: number}
+      - {name: salesperson_id, expr: salesperson_id, data_type: number}
+      - {name: is_undersupply_backordered, expr: is_undersupply_backordered, data_type: boolean, description: Commande en reliquat faute de stock}
+    time_dimensions:
+      - {name: order_date, expr: order_date, data_type: date, description: Date de commande, synonyms: [date de commande]}
+      - {name: expected_delivery_date, expr: expected_delivery_date, data_type: date, description: Date de livraison prévue}
+    facts:
+      - {name: ordered_quantity, expr: quantity, data_type: number, description: Quantité commandée}
+      - {name: picked_quantity, expr: picked_quantity, data_type: number, description: Quantité préparée}
+      - {name: order_amount_excluding_tax, expr: amount_excluding_tax, data_type: number, description: Montant HT commandé, synonyms: [montant commandé]}
+    metrics:
+      - {name: order_count, expr: COUNT(DISTINCT order_id), description: Nombre de commandes, synonyms: [nombre de commandes]}
+
+  - name: fact_purchases
+    description: Achats auprès des fournisseurs, une ligne par ligne de bon de commande fournisseur.
+    base_table: {database: WWI_DB, schema: GOLD, table: FACT_PURCHASES}
+    primary_key: {columns: [purchase_order_line_id]}
+    dimensions:
+      - {name: purchase_order_line_id, expr: purchase_order_line_id, data_type: number}
+      - {name: purchase_order_id, expr: purchase_order_id, data_type: number, description: Numéro de bon de commande fournisseur}
+      - {name: supplier_id, expr: supplier_id, data_type: number}
+      - {name: stock_item_id, expr: stock_item_id, data_type: number}
+      - {name: purchase_is_finalized, expr: is_finalized, data_type: boolean, description: Ligne d'achat finalisée}
+    time_dimensions:
+      - {name: purchase_order_date, expr: order_date, data_type: date, description: Date du bon de commande fournisseur, synonyms: [date d'achat]}
+    facts:
+      - {name: purchased_quantity, expr: ordered_quantity, data_type: number, description: Quantité achetée (unités), synonyms: [quantité achetée]}
+      - {name: received_quantity, expr: received_quantity, data_type: number, description: Quantité reçue}
+      - {name: purchase_amount, expr: expected_amount, data_type: number, description: Montant des achats, synonyms: [montant des achats, coût d'achat, dépenses fournisseurs]}
+
+  - name: fact_customer_transactions
+    description: Transactions clients (factures, paiements, avoirs) avec le solde restant dû.
+    base_table: {database: WWI_DB, schema: GOLD, table: FACT_CUSTOMER_TRANSACTIONS}
+    primary_key: {columns: [customer_transaction_id]}
+    dimensions:
+      - {name: customer_transaction_id, expr: customer_transaction_id, data_type: number}
+      - {name: customer_id, expr: customer_id, data_type: number}
+      - {name: transaction_type, expr: transaction_type, data_type: varchar, description: "Type de transaction : facture ou paiement reçu", sample_values: [Customer Invoice, Customer Payment Received]}
+      - {name: payment_method, expr: payment_method, data_type: varchar, description: Moyen de paiement, synonyms: [mode de paiement], sample_values: [EFT]}
+      - {name: transaction_is_finalized, expr: is_finalized, data_type: boolean, description: Transaction soldée}
+    time_dimensions:
+      - {name: transaction_date, expr: transaction_date, data_type: date, description: Date de la transaction}
+    facts:
+      - {name: transaction_amount, expr: transaction_amount, data_type: number, description: Montant TTC de la transaction (négatif pour un paiement), synonyms: [montant payé]}
+      - {name: outstanding_balance, expr: outstanding_balance, data_type: number, description: Solde restant dû, synonyms: [impayés, encours client, créances]}
+
+  - name: fact_stock_holdings
+    description: Stock actuel par produit (photo), avec valeur et seuil de réapprovisionnement.
+    base_table: {database: WWI_DB, schema: GOLD, table: FACT_STOCK_HOLDINGS}
+    primary_key: {columns: [stock_item_id]}
+    dimensions:
+      - {name: stock_item_id, expr: stock_item_id, data_type: number}
+      - {name: bin_location, expr: bin_location, data_type: varchar, description: Emplacement en entrepôt}
+      - {name: is_below_reorder_level, expr: is_below_reorder_level, data_type: boolean, description: Stock sous le seuil de réapprovisionnement, synonyms: [rupture, à réapprovisionner]}
+    facts:
+      - {name: quantity_on_hand, expr: quantity_on_hand, data_type: number, description: Quantité en stock, synonyms: [stock, quantité en stock]}
+      - {name: stock_value, expr: stock_value, data_type: number, description: Valeur du stock au dernier prix de revient, synonyms: [valeur du stock]}
+      - {name: reorder_level, expr: reorder_level, data_type: number, description: Seuil de réapprovisionnement}
+
+  # ================================================================ DIMENSIONS
+  - name: dim_customer
+    description: Clients de Wide World Importers.
+    base_table: {database: WWI_DB, schema: GOLD, table: DIM_CUSTOMER}
+    primary_key: {columns: [customer_id]}
+    dimensions:
+      - {name: customer_id, expr: customer_id, data_type: number}
+      - {name: customer_name, expr: customer_name, data_type: varchar, description: Nom du client, synonyms: [client, nom du client]}
+      - {name: customer_category, expr: customer_category, data_type: varchar, description: Catégorie de client, synonyms: [segment, type de client], sample_values: [Novelty Shop, Supermarket, Computer Store, Gift Store, Corporate]}
+      - {name: buying_group, expr: buying_group, data_type: varchar, description: Groupement d'achat, sample_values: [Tailspin Toys, Wingtip Toys, Aucun]}
+      - {name: customer_city, expr: city, data_type: varchar, description: Ville de livraison du client, synonyms: [ville]}
+      - {name: customer_state_province, expr: state_province, data_type: varchar, description: État / province du client, synonyms: [état, province, région]}
+      - {name: sales_territory, expr: sales_territory, data_type: varchar, description: Territoire commercial, synonyms: [territoire, zone commerciale], sample_values: [Southeast, Great Lakes, Mideast, Far West, Plains, Southwest, New England, Rocky Mountain, External]}
+      - {name: customer_country, expr: country, data_type: varchar, description: Pays du client, synonyms: [pays]}
+      - {name: is_on_credit_hold, expr: is_on_credit_hold, data_type: boolean, description: Client bloqué pour crédit}
+    time_dimensions:
+      - {name: account_opened_date, expr: account_opened_date, data_type: date, description: Date d'ouverture du compte client}
+    facts:
+      - {name: credit_limit, expr: credit_limit, data_type: number, description: Plafond de crédit}
+
+  - name: dim_product
+    description: Produits (articles de stock).
+    base_table: {database: WWI_DB, schema: GOLD, table: DIM_PRODUCT}
+    primary_key: {columns: [stock_item_id]}
+    dimensions:
+      - {name: stock_item_id, expr: stock_item_id, data_type: number}
+      - {name: product_name, expr: product_name, data_type: varchar, description: Nom du produit, synonyms: [produit, article]}
+      - {name: brand, expr: brand, data_type: varchar, description: Marque, synonyms: [marque]}
+      - {name: color, expr: color, data_type: varchar, description: Couleur du produit, synonyms: [couleur]}
+      - {name: main_stock_group, expr: main_stock_group, data_type: varchar, description: Groupe / famille de produits, synonyms: [catégorie de produit, famille, gamme], sample_values: [Clothing, Computing Novelties, Novelty Items, Packaging Materials, Toys]}
+      - {name: is_chiller_stock, expr: is_chiller_stock, data_type: boolean, description: Produit réfrigéré}
+      - {name: country_of_manufacture, expr: country_of_manufacture, data_type: varchar, description: Pays de fabrication}
+      - {name: product_supplier_name, expr: supplier_name, data_type: varchar, description: Fournisseur principal du produit}
+    facts:
+      - {name: catalog_unit_price, expr: unit_price, data_type: number, description: Prix catalogue HT}
+      - {name: recommended_retail_price, expr: recommended_retail_price, data_type: number, description: Prix de vente conseillé}
+
+  - name: dim_supplier
+    description: Fournisseurs.
+    base_table: {database: WWI_DB, schema: GOLD, table: DIM_SUPPLIER}
+    primary_key: {columns: [supplier_id]}
+    dimensions:
+      - {name: supplier_id, expr: supplier_id, data_type: number}
+      - {name: supplier_name, expr: supplier_name, data_type: varchar, description: Nom du fournisseur, synonyms: [fournisseur]}
+      - {name: supplier_category, expr: supplier_category, data_type: varchar, description: Catégorie de fournisseur}
+      - {name: supplier_country, expr: country, data_type: varchar, description: Pays du fournisseur}
+    facts:
+      - {name: payment_days, expr: payment_days, data_type: number, description: Délai de paiement en jours}
+
+  - name: dim_employee
+    description: Employés ; les commerciaux ont is_salesperson = vrai.
+    base_table: {database: WWI_DB, schema: GOLD, table: DIM_EMPLOYEE}
+    primary_key: {columns: [employee_id]}
+    dimensions:
+      - {name: employee_id, expr: employee_id, data_type: number}
+      - {name: employee_name, expr: employee_name, data_type: varchar, description: Nom de l'employé ou du commercial, synonyms: [commercial, vendeur, employé]}
+      - {name: is_salesperson, expr: is_salesperson, data_type: boolean, description: Vrai si commercial}
+
+  - name: dim_city
+    description: Géographie de livraison des ventes.
+    base_table: {database: WWI_DB, schema: GOLD, table: DIM_CITY}
+    primary_key: {columns: [city_id]}
+    dimensions:
+      - {name: city_id, expr: city_id, data_type: number}
+      - {name: city_name, expr: city_name, data_type: varchar, description: Ville de livraison}
+      - {name: state_province_name, expr: state_province_name, data_type: varchar, description: État ou province de livraison}
+      - {name: country_name, expr: country_name, data_type: varchar, description: Pays de livraison}
+      - {name: continent, expr: continent, data_type: varchar, description: Continent}
+
+relationships:
+  - name: sales_to_customer
+    left_table: fact_sales
+    right_table: dim_customer
+    relationship_columns: [{left_column: customer_id, right_column: customer_id}]
+    join_type: left_outer
+    relationship_type: many_to_one
+  - name: sales_to_product
+    left_table: fact_sales
+    right_table: dim_product
+    relationship_columns: [{left_column: stock_item_id, right_column: stock_item_id}]
+    join_type: left_outer
+    relationship_type: many_to_one
+  - name: sales_to_salesperson
+    left_table: fact_sales
+    right_table: dim_employee
+    relationship_columns: [{left_column: salesperson_id, right_column: employee_id}]
+    join_type: left_outer
+    relationship_type: many_to_one
+  - name: sales_to_city
+    left_table: fact_sales
+    right_table: dim_city
+    relationship_columns: [{left_column: delivery_city_id, right_column: city_id}]
+    join_type: left_outer
+    relationship_type: many_to_one
+  - name: orders_to_customer
+    left_table: fact_orders
+    right_table: dim_customer
+    relationship_columns: [{left_column: customer_id, right_column: customer_id}]
+    join_type: left_outer
+    relationship_type: many_to_one
+  - name: orders_to_product
+    left_table: fact_orders
+    right_table: dim_product
+    relationship_columns: [{left_column: stock_item_id, right_column: stock_item_id}]
+    join_type: left_outer
+    relationship_type: many_to_one
+  - name: orders_to_salesperson
+    left_table: fact_orders
+    right_table: dim_employee
+    relationship_columns: [{left_column: salesperson_id, right_column: employee_id}]
+    join_type: left_outer
+    relationship_type: many_to_one
+  - name: purchases_to_supplier
+    left_table: fact_purchases
+    right_table: dim_supplier
+    relationship_columns: [{left_column: supplier_id, right_column: supplier_id}]
+    join_type: left_outer
+    relationship_type: many_to_one
+  - name: purchases_to_product
+    left_table: fact_purchases
+    right_table: dim_product
+    relationship_columns: [{left_column: stock_item_id, right_column: stock_item_id}]
+    join_type: left_outer
+    relationship_type: many_to_one
+  - name: transactions_to_customer
+    left_table: fact_customer_transactions
+    right_table: dim_customer
+    relationship_columns: [{left_column: customer_id, right_column: customer_id}]
+    join_type: left_outer
+    relationship_type: many_to_one
+  - name: holdings_to_product
+    left_table: fact_stock_holdings
+    right_table: dim_product
+    relationship_columns: [{left_column: stock_item_id, right_column: stock_item_id}]
+    join_type: left_outer
+    relationship_type: many_to_one
+
+verified_queries:
+  - name: top_10_clients_ca
+    question: Quels sont les dix meilleurs clients par chiffre d'affaires ?
+    use_as_onboarding_question: true
+    verified_by: Equipe BI
+    verified_at: 1792108800
+    sql: |
+      SELECT c.customer_name, ROUND(SUM(s.amount_excluding_tax), 2) AS chiffre_affaires_ht
+      FROM __fact_sales AS s
+      JOIN __dim_customer AS c ON s.customer_id = c.customer_id
+      GROUP BY c.customer_name
+      ORDER BY chiffre_affaires_ht DESC NULLS LAST
+      LIMIT 10
+  - name: ventes_par_mois
+    question: Quel est le montant total des ventes par mois ?
+    use_as_onboarding_question: true
+    verified_by: Equipe BI
+    verified_at: 1792108800
+    sql: |
+      SELECT DATE_TRUNC('MONTH', s.invoice_date) AS mois, ROUND(SUM(s.amount_excluding_tax), 2) AS ventes_ht
+      FROM __fact_sales AS s
+      GROUP BY mois
+      ORDER BY mois
+  - name: produits_plus_rentables
+    question: Quels produits génèrent le plus de bénéfices ?
+    use_as_onboarding_question: true
+    verified_by: Equipe BI
+    verified_at: 1792108800
+    sql: |
+      SELECT p.product_name, ROUND(SUM(s.profit), 2) AS benefice
+      FROM __fact_sales AS s
+      JOIN __dim_product AS p ON s.stock_item_id = p.stock_item_id
+      GROUP BY p.product_name
+      ORDER BY benefice DESC NULLS LAST
+      LIMIT 10
