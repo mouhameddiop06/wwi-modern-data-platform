@@ -1,7 +1,13 @@
 # Dépendances de l'application dans Streamlit in Snowflake (canal Anaconda Snowflake)
+# Version de Streamlit fixée explicitement : sans cela, Snowflake utilise une version
+# ancienne qui ne connaît pas st.chat_input / st.chat_message.
+# Versions disponibles : SELECT version FROM information_schema.packages
+#                        WHERE language = 'python' AND package_name = 'streamlit';
 name: sf_env
 channels:
   - snowflake
 dependencies:
-  - pandas
-  - altair
+  - streamlit=1.52.2
+  - snowflake-snowpark-python
+  - pandas=2.3.3
+  - altair=5.5.0
