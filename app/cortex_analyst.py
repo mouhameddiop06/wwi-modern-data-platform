@@ -61,15 +61,20 @@ def parse_answer(body: dict) -> AnalystAnswer:
     return answer
 
 
-def check_read_only(sql: str) -> None:
-    """Refuse toute requête qui n'est pas une simple lecture."""
-    stripped = re.sub(r"--[^\n]*|/\*.*?\*/", "", sql, flags=re.DOTALL).strip().rstrip(";")
+def check_read_only(sql: str) -> str:
+    """Refuse toute requête qui n'est pas une simple lecture.
+
+    Renvoie la requête nettoyée (sans commentaires ni « ; » final), seule forme
+    utilisable comme sous-requête : Snowpark exécute SELECT * FROM (<sql>) LIMIT n.
+    """
+    stripped = re.sub(r"--[^\n]*|/\*.*?\*/", "", sql, flags=re.DOTALL).strip().rstrip(";").strip()
     if ";" in stripped:
         raise ValueError("Une seule instruction SQL est autorisée.")
     if not re.match(r"^(with|select)\b", stripped, re.IGNORECASE):
         raise ValueError("Seules les requêtes SELECT sont autorisées.")
     if FORBIDDEN.search(stripped):
         raise ValueError("La requête contient une instruction non autorisée.")
+    return stripped
 
 
 def to_numeric(df: pd.DataFrame) -> pd.DataFrame:
@@ -138,7 +143,7 @@ class LocalBackend:
         return parse_answer(resp.json())
 
     def run_sql(self, sql: str) -> pd.DataFrame:
-        check_read_only(sql)
+        sql = check_read_only(sql)
         return self._retry_on_expiry(self._run_sql, sql)
 
     def _run_sql(self, sql: str) -> pd.DataFrame:
@@ -172,7 +177,7 @@ class SnowflakeBackend:
         return parse_answer(body)
 
     def run_sql(self, sql: str) -> pd.DataFrame:
-        check_read_only(sql)
+        sql = check_read_only(sql)
         rows = self.session.sql(sql).limit(MAX_ROWS).collect()
         df = pd.DataFrame([r.as_dict() for r in rows])
         return to_numeric(df)
