@@ -10,7 +10,9 @@ Orchestration Dagster de la Modern Data Platform WWI.
 
 Lancement : .\\dagster.ps1   (interface sur http://localhost:3000)
 """
+import os
 import re
+import sys
 from pathlib import Path
 
 from dagster import (
@@ -32,7 +34,18 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")  # identifiants Snowflake pour DLT et dbt
 
+# `dbt` doit être trouvable même si l'environnement virtuel n'est pas activé
+# (utilisé par prepare_if_dev pour régénérer le manifest)
+VENV_BIN = Path(sys.executable).parent
+if str(VENV_BIN) not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = f"{VENV_BIN}{os.pathsep}{os.environ.get('PATH', '')}"
+
 from ingestion.wwi_pipeline import make_pipeline, wwi_source  # noqa: E402
+from orchestration.alerts import (  # noqa: E402
+    gold_freshness_checks,
+    gold_freshness_sensor,
+    wwi_run_failure_alert,
+)
 
 # =====================================================================
 # BRONZE : ingestion DLT SQL Server -> Snowflake
@@ -80,8 +93,9 @@ class MedallionDbtTranslator(DagsterDbtTranslator):
     def get_asset_spec(self, manifest, unique_id, project):
         spec = super().get_asset_spec(manifest, unique_id, project)
         node = manifest["nodes"].get(unique_id)
-        if node and node["resource_type"] == "model":
-            layer = node["fqn"][1]  # dossier : silver ou gold
+        if node and node["resource_type"] in ("model", "snapshot"):
+            # dossier du modèle (silver / gold) ; les snapshots d'historisation vont en silver
+            layer = node["fqn"][1] if node["resource_type"] == "model" else "silver"
             spec = spec.replace_attributes(
                 key=AssetKey([layer, node["name"]]),
                 group_name=layer,
@@ -120,14 +134,16 @@ wwi_daily_schedule = ScheduleDefinition(
 
 defs = Definitions(
     assets=[bronze_assets, dbt_medallion_assets],
+    asset_checks=gold_freshness_checks,
     jobs=[wwi_daily_job],
     schedules=[wwi_daily_schedule],
+    sensors=[wwi_run_failure_alert, gold_freshness_sensor],
     resources={
         "dlt": DagsterDltResource(),
         "dbt": DbtCliResource(
             project_dir=dbt_project,
             profiles_dir=DBT_DIR,
-            dbt_executable=str(ROOT / ".venv" / "Scripts" / "dbt.exe"),
+            dbt_executable=str(VENV_BIN / ("dbt.exe" if os.name == "nt" else "dbt")),
         ),
     },
 )

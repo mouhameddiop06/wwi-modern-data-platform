@@ -1,0 +1,154 @@
+\chapter{Résultats et évaluation}
+\label{ch:resultats}
+
+\section{Bilan quantitatif de la plateforme}
+
+\begin{table}[H]
+\centering
+\caption{Indicateurs de la plateforme réalisée}
+\label{tab:bilan}
+\begin{tabularx}{\linewidth}{@{}X r@{}}
+\toprule
+\textbf{Élément} & \textbf{Valeur} \\
+\midrule
+Tables ingérées en Bronze (dont 2 tables d'archive) & 30 \\
+Lignes chargées (premier chargement) & $\approx$ 1 million \\
+Modèles Silver / snapshot & 29 / 1 \\
+Tables Gold (dimensions, faits, historisation) & 15 \\
+Nœuds dbt exécutés par \texttt{dbt build} (modèles, snapshot, tests) & 189 \\
+Tests dbt (tous au vert) & 144 \\
+Assets Dagster / contrôles de qualité & 75 / 146 \\
+Écart de volume SQL Server / Bronze & 0 ligne \\
+Écart de CA TTC Bronze / Gold & 0 \\
+Durée d'une exécution complète (ingestion + dbt) & $\approx$ 4 min 30 \\
+Lignes retraitées par une exécution incrémentale sans changement & 0 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Évaluation de l'application Text-to-SQL}
+
+Un script de test de bout en bout (\texttt{app/test\_questions.py}) soumet une série de questions à
+Cortex Analyst, exécute le SQL obtenu et affiche les résultats. Les réponses ont été comparées à des
+requêtes SQL écrites manuellement : \textbf{toutes les questions testées ont produit un SQL exécutable
+et des résultats identiques} à la référence (tableau~\ref{tab:eval}).
+
+\begin{longtable}{@{}p{6.2cm}p{8.3cm}@{}}
+\caption{Questions testées et résultats obtenus}
+\label{tab:eval}\\
+\toprule
+\textbf{Question posée en français} & \textbf{Résultat (extrait)} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Question posée en français} & \textbf{Résultat (extrait)} \\
+\midrule
+\endhead
+Quels sont les dix meilleurs clients par chiffre d'affaires ? &
+  1\textsuperscript{er} : Tailspin Toys (Inguadona, MN) avec 381\,585,35~\$ HT ; puis Tailspin Toys
+  (Minidoka, ID) avec 371\,822,30~\$ et Mauno Laurila avec 369\,058,30~\$. \\
+\addlinespace
+Quel est le montant total des ventes par mois ? &
+  41 mois, de janvier 2013 (3\,770\,410,85~\$) à mai 2016 ; courbe affichée automatiquement. \\
+\addlinespace
+Quels produits génèrent le plus de bénéfices ? &
+  « 20 mm Double sided bubble wrap 50m » : 5\,293\,680~\$ ; « Air cushion machine (Blue) » :
+  4\,439\,391~\$. \\
+\addlinespace
+Quel est le taux de marge par territoire commercial en 2015 ? &
+  9 territoires ; de 50,57~\% (Great Lakes) à environ 49,9~\% ; utilisation de la métrique
+  \texttt{margin\_rate}. \\
+\addlinespace
+Quels produits sont sous le seuil de réapprovisionnement ? &
+  2 produits, dont « Shipping carton (Brown) 305x305x305mm » (38 unités pour un seuil de 50). \\
+\addlinespace
+Quel est le chiffre d'affaires par pays ? &
+  United States : 172\,261\,341,20~\$ HT (tous les clients de WWI sont américains). \\
+\addlinespace
+Quel est le chiffre d'affaires par catégorie de client et par année ? &
+  Novelty Shop domine chaque année (environ 38 M\$ en 2015) ; une série par catégorie. \\
+\addlinespace
+\emph{(suivi)} Et seulement pour les supermarchés, par mois en 2015 ? &
+  Question interprétée dans le contexte : CA HT mensuel 2015 de la catégorie \texttt{Supermarket}. \\
+\bottomrule
+\end{longtable}
+
+\section{Quelques enseignements métier}
+
+Les données de la couche Gold permettent de dégager rapidement une vue d'ensemble de l'activité de
+Wide World Importers :
+\begin{itemize}
+  \item un chiffre d'affaires cumulé de \textbf{172,3 M\$ HT} sur 70\,510 factures, pour un bénéfice de
+        \textbf{85,7 M\$}, soit un taux de marge d'environ \textbf{49,8~\%} ;
+  \item une croissance régulière du CA : 45,7 M\$ en 2013, 49,9 M\$ en 2014 et 54,0 M\$ en 2015
+        (l'année 2016 ne couvre que cinq mois) ;
+  \item un taux de marge très homogène entre territoires commerciaux (entre 49,9~\% et 50,6~\% en 2015) ;
+  \item une forte concentration des achats sur deux fournisseurs (Fabrikam, Inc. et Litware, Inc.).
+\end{itemize}
+
+\begin{infobox}[title=Remarque sur les données]
+Dans WWI, le montant total des achats fournisseurs (environ 946 M\$, cohérent avec les factures
+fournisseurs de la source : 944 M\$) dépasse largement le chiffre d'affaires. Il s'agit d'une
+caractéristique connue de ce jeu de données synthétique, et non d'une erreur de transformation. De même,
+la plupart des versions archivées des produits datent de la fin de la période (31 mai 2016) et
+correspondent à des mises à jour techniques : le mécanisme d'historisation est en place et sera
+pleinement exploité sur des données réelles.
+\end{infobox}
+
+\section{Difficultés rencontrées et solutions}
+
+\begin{longtable}{@{}p{5.6cm}p{8.9cm}@{}}
+\caption{Principales difficultés et solutions apportées}
+\label{tab:difficultes}\\
+\toprule
+\textbf{Difficulté} & \textbf{Solution} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Difficulté} & \textbf{Solution} \\
+\midrule
+\endhead
+Accès refusé du service SQL Server au fichier de sauvegarde &
+  Copie du \texttt{.bak} dans un dossier partagé lisible par le compte de service. \\
+\addlinespace
+Certificat non approuvé avec le pilote ODBC 18 &
+  Option \texttt{TrustServerCertificate} (\texttt{-C}) pour l'instance locale. \\
+\addlinespace
+Épuisement du pool de connexions SQLAlchemy lors de l'extraction parallèle &
+  Utilisation d'un \texttt{NullPool} (une connexion par table extraite). \\
+\addlinespace
+Types \texttt{geography} et \texttt{varbinary} non transférables &
+  Exclusion des colonnes avant extraction (\texttt{table\_adapter\_callback}). \\
+\addlinespace
+Risque de perte de données : table sans clé chargée en mode incrémental \texttt{replace} &
+  Incrémental activé uniquement pour les tables dotées d'une clé primaire ; tables d'archive en
+  rechargement complet. \\
+\addlinespace
+Fonctions LLM de Cortex indisponibles sur un compte d'essai &
+  Recours à Cortex Analyst et à un modèle sémantique, solution par ailleurs plus fiable. \\
+\addlinespace
+Modèle sémantique rejeté (expression tronquée par une virgule en YAML) &
+  Mise entre guillemets des expressions contenant une virgule ; validation YAML ajoutée en CI. \\
+\addlinespace
+Graphique erroné : l'année, numérique, prise pour une mesure &
+  Les colonnes temporelles et les identifiants sont traités comme des axes. \\
+\addlinespace
+\texttt{dbt} introuvable par Dagster lorsque l'environnement virtuel n'est pas activé &
+  Ajout du dossier de l'environnement virtuel au \texttt{PATH} au chargement des définitions. \\
+\bottomrule
+\end{longtable}
+
+\section{Limites}
+
+\begin{itemize}
+  \item Le compte Snowflake est un compte d'essai (30 jours, 400~\$ de crédits) : les fonctions LLM
+        génériques n'y sont pas disponibles.
+  \item Le système source est une instance SQL Server locale : en production, l'ingestion serait
+        exécutée sur un serveur ou un conteneur ayant accès à la source et à Snowflake.
+  \item La qualité de la génération SQL dépend du modèle sémantique ; les questions portant sur des
+        notions non décrites (par exemple les températures des entrepôts frigorifiques, non ingérées)
+        ne peuvent pas recevoir de réponse.
+  \item L'exécution de la CI sur la base clonée suppose l'octroi préalable du privilège
+        \texttt{CREATE DATABASE} au rôle \texttt{WWI\_ENGINEER} (script
+        \texttt{snowflake/01\_ameliorations.sql}).
+\end{itemize}

@@ -13,3 +13,14 @@ logs/
 # dagster
 .dagster_home/
 transform/wwi_dbt/.user.yml
+# outils locaux
+.claude/
+# LaTeX (fichiers intermédiaires)
+rapport/*.aux
+rapport/*.log
+rapport/*.lof
+rapport/*.lot
+rapport/*.lol
+rapport/*.toc
+rapport/*.out
+rapport/compile1.log

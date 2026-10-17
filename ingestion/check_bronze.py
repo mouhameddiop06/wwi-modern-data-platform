@@ -8,7 +8,6 @@ import re
 
 import snowflake.connector
 import sqlalchemy as sa
-
 from wwi_pipeline import TABLES, mssql_engine
 
 

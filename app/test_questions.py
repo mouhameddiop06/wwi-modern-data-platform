@@ -2,12 +2,13 @@
 Test de bout en bout du text-to-SQL sur les questions du sujet.
 
     python app/test_questions.py
+    python app/test_questions.py "Quel est le CA par pays ?"
 """
 import sys
 import warnings
 
 warnings.filterwarnings("ignore")
-from cortex_analyst import ask_analyst, connect, run_sql  # noqa: E402
+from cortex_analyst import get_backend  # noqa: E402
 
 QUESTIONS = sys.argv[1:] or [
     "Quels sont les dix meilleurs clients par chiffre d'affaires ?",
@@ -17,17 +18,17 @@ QUESTIONS = sys.argv[1:] or [
     "Quels produits sont sous le seuil de réapprovisionnement ?",
 ]
 
-conn = connect()
+backend = get_backend()
 ok = 0
 for q in QUESTIONS:
     print("=" * 80, "\nQ :", q)
     try:
-        ans = ask_analyst(conn, [{"role": "user", "content": [{"type": "text", "text": q}]}])
+        ans = backend.ask([{"role": "user", "content": [{"type": "text", "text": q}]}])
         print("Cortex :", ans.text.strip()[:200])
         if not ans.sql:
             print("Pas de SQL. Suggestions :", ans.suggestions)
             continue
-        df = run_sql(conn, ans.sql)
+        df = backend.run_sql(ans.sql)
         print(f"{len(df)} ligne(s)\n", df.head(5).to_string(index=False))
         ok += 1
     except Exception as e:  # noqa: BLE001

@@ -1,3 +1,10 @@
+{{ config(
+    materialized='incremental',
+    unique_key='invoice_id',
+    incremental_strategy='merge',
+    on_schema_change='append_new_columns'
+) }}
+
 select
     invoice_id,
     customer_id,
@@ -17,4 +24,5 @@ select
     {{ clean_text('confirmed_received_by') }} as confirmed_received_by,
     last_edited_when
 from {{ source('bronze', 'sales_invoices') }}
+{{ incremental_filter() }}
 {{ dedup('invoice_id', 'last_edited_when') }}

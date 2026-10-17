@@ -1,0 +1,146 @@
+% =====================================================================
+%  Rapport de projet — Modern Data Platform WWI & Text-to-SQL Cortex AI
+%  Compilation : pdflatex rapport.tex (deux fois, pour la table des matières)
+% =====================================================================
+\documentclass[11pt,a4paper,oneside]{report}
+
+% ---------------------------------------------------------------- informations
+\newcommand{\auteur}{Mouhamed DIOP}
+\newcommand{\encadrant}{Dr Jean Gane SARR}
+\newcommand{\anneeuniv}{2025 -- 2026}
+\newcommand{\titreprojet}{Conception d'une Modern Data Platform avec architecture Médaillon et développement d'une application Text-to-SQL basée sur l'IA}
+
+% ---------------------------------------------------------------- paquets
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[a4paper,margin=2.5cm,headheight=14pt]{geometry}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{listings}
+\usepackage{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,shapes.multipart,fit,backgrounds,calc,shadows}
+\usepackage[hidelinks]{hyperref}
+\usepackage{csquotes}
+
+% ---------------------------------------------------------------- couleurs
+\definecolor{ucadblue}{HTML}{1F8FD8}
+\definecolor{ucaddark}{HTML}{0B3C5D}
+\definecolor{bronze}{HTML}{B07636}
+\definecolor{silver}{HTML}{8A9199}
+\definecolor{gold}{HTML}{C9A227}
+\definecolor{snow}{HTML}{29B5E8}
+\definecolor{codebg}{HTML}{F5F7FA}
+\definecolor{codekw}{HTML}{0B5CAD}
+\definecolor{codecom}{HTML}{6A737D}
+\definecolor{codestr}{HTML}{A6492C}
+
+% ---------------------------------------------------------------- mise en page
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+\setlength{\emergencystretch}{3em} % évite les débordements dus aux longs \texttt
+\renewcommand{\arraystretch}{1.25}
+\captionsetup{font=small,labelfont={bf,color=ucaddark}}
+\setlist{itemsep=0.15em,topsep=0.3em}
+
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\color{ucaddark}}
+  {\Large\MakeUppercase{\chaptertitlename}\ \thechapter}
+  {0.4em}
+  {\Huge}
+  [\vspace{0.3em}{\color{ucadblue}\titlerule[1.5pt]}]
+\titlespacing*{\chapter}{0pt}{-10pt}{25pt}
+\titleformat{\section}{\normalfont\Large\bfseries\color{ucaddark}}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries\color{ucaddark}}{\thesubsection}{0.8em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{ucaddark}\leftmark}
+\fancyhead[R]{\small\color{ucaddark}Master II BI -- UCAD}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\small\thepage}\renewcommand{\headrulewidth}{0pt}}
+
+% ---------------------------------------------------------------- code
+\lstdefinelanguage{yaml}{keywords={true,false,null},sensitive=false,comment=[l]{\#},morestring=[b]"}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{codebg},
+  keywordstyle=\color{codekw}\bfseries,
+  commentstyle=\color{codecom}\itshape,
+  stringstyle=\color{codestr},
+  frame=single, rulecolor=\color{black!15},
+  framesep=4pt, xleftmargin=6pt, xrightmargin=6pt,
+  breaklines=true, columns=fullflexible, keepspaces=true,
+  showstringspaces=false, tabsize=4,
+  numbers=left, numberstyle=\tiny\color{codecom}, numbersep=6pt,
+  captionpos=b,
+  literate={é}{{\'e}}1 {è}{{\`e}}1 {ê}{{\^e}}1 {à}{{\`a}}1 {â}{{\^a}}1
+           {ç}{{\c c}}1 {ô}{{\^o}}1 {î}{{\^i}}1 {ù}{{\`u}}1 {û}{{\^u}}1
+           {É}{{\'E}}1 {È}{{\`E}}1 {À}{{\`A}}1 {«}{{\guillemotleft}}1 {»}{{\guillemotright}}1
+           {’}{{'}}1 {—}{{--}}1 {–}{{-}}1 {→}{{$\rightarrow$}}1 {…}{{...}}1
+}
+\renewcommand{\lstlistingname}{Listing}
+\renewcommand{\lstlistlistingname}{Liste des listings}
+
+% ---------------------------------------------------------------- encadrés
+\newtcolorbox{infobox}[1][]{colback=ucadblue!6,colframe=ucadblue!70!black,
+  fonttitle=\bfseries,boxrule=0.6pt,arc=2pt,left=6pt,right=6pt,top=4pt,bottom=4pt,#1}
+\newtcolorbox{resultbox}[1][]{colback=green!5,colframe=green!45!black,
+  fonttitle=\bfseries,boxrule=0.6pt,arc=2pt,left=6pt,right=6pt,top=4pt,bottom=4pt,#1}
+
+% ---------------------------------------------------------------- styles TikZ
+\tikzset{
+  box/.style={draw, rounded corners=3pt, align=center, minimum height=1.0cm,
+              text width=2.6cm, font=\footnotesize, fill=white, drop shadow={opacity=0.15}},
+  layer/.style={draw, rounded corners=4pt, align=center, minimum height=1.1cm,
+              text width=2.4cm, font=\footnotesize\bfseries, text=white},
+  flow/.style={-{Stealth[length=2.6mm]}, thick, draw=ucaddark},
+  lbl/.style={font=\scriptsize, fill=white, inner sep=1.5pt},
+}
+
+\hypersetup{pdftitle={\titreprojet}, pdfauthor={\auteur}}
+
+\begin{document}
+
+\input{chapitres/00_garde}
+
+\pagenumbering{roman}
+\input{chapitres/01_preliminaires}
+
+\tableofcontents
+\listoffigures
+\listoftables
+\lstlistoflistings
+\clearpage
+
+\pagenumbering{arabic}
+\input{chapitres/02_introduction}
+\input{chapitres/03_contexte}
+\input{chapitres/04_etat_art}
+\input{chapitres/05_conception}
+\input{chapitres/06_realisation}
+\input{chapitres/07_application}
+\input{chapitres/08_industrialisation}
+\input{chapitres/09_resultats}
+\input{chapitres/10_conclusion}
+
+\appendix
+\input{chapitres/11_annexes}
+
+\input{chapitres/12_bibliographie}
+
+\end{document}

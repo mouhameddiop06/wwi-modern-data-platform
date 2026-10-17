@@ -1,0 +1,105 @@
+\chapter{Contexte, problématique et objectifs}
+\label{ch:contexte}
+
+\section{Contexte du projet}
+
+Dans la plupart des organisations, les données de gestion sont stockées dans des bases relationnelles
+transactionnelles (OLTP). Ces bases sont optimisées pour enregistrer rapidement de nombreuses petites
+opérations --- une commande, une facture, un paiement --- et sont donc fortement normalisées : une simple
+question comme « quel est le chiffre d'affaires par catégorie de client et par année ? » nécessite des
+jointures entre une demi-douzaine de tables, des règles de calcul (hors taxes, toutes taxes comprises,
+avoirs) et une bonne connaissance du schéma.
+
+L'informatique décisionnelle répond traditionnellement à ce problème par la construction d'un entrepôt de
+données (\emph{data warehouse}) alimenté par des traitements ETL et exploité au moyen de rapports et de
+tableaux de bord. Cette approche reste cependant rigide : chaque nouveau besoin d'analyse passe par
+l'équipe technique, qui doit écrire la requête ou faire évoluer le rapport.
+
+\section{Problématique}
+
+Le sujet formule la problématique suivante : \emph{comment concevoir une plateforme de données moderne
+capable d'automatiser l'ingestion, la transformation et la modélisation des données, tout en offrant une
+interface conversationnelle permettant d'interroger ces données en langage naturel grâce à
+l'intelligence artificielle ?}
+
+Cette problématique soulève plusieurs questions techniques :
+\begin{itemize}
+  \item comment extraire de manière fiable et \textbf{incrémentale} les données d'un système source
+        transactionnel vers un entrepôt dans le cloud ?
+  \item comment organiser les données en couches successives garantissant la \textbf{traçabilité}, la
+        \textbf{qualité} et la \textbf{facilité d'analyse} ?
+  \item comment automatiser, surveiller et fiabiliser l'enchaînement des traitements ?
+  \item comment permettre à un LLM de générer un SQL \textbf{correct} sur un schéma métier, et comment
+        garantir que cette génération reste \textbf{sûre} (aucune modification possible des données) ?
+\end{itemize}
+
+\section{Objectifs}
+
+\subsection{Objectif général}
+Concevoir et mettre en œuvre une Modern Data Platform centralisant les données de l'entreprise, les
+transformant selon une architecture Médaillon, et exposant une application Text-to-SQL capable de
+convertir automatiquement les questions des utilisateurs en requêtes SQL.
+
+\subsection{Objectifs spécifiques}
+\begin{enumerate}
+  \item Concevoir une architecture moderne de données de bout en bout.
+  \item Automatiser les pipelines d'ingestion de SQL Server vers Snowflake avec DLT.
+  \item Mettre en place les couches Bronze, Silver et Gold dans Snowflake.
+  \item Transformer, documenter et tester les données avec dbt.
+  \item Orchestrer l'ensemble des traitements avec Dagster.
+  \item Développer une interface utilisateur avec Streamlit.
+  \item Intégrer Snowflake Cortex AI pour convertir les questions en langage naturel en requêtes SQL
+        exécutables.
+\end{enumerate}
+
+Au-delà de ces objectifs, le projet traite les pistes d'amélioration identifiées en cours de réalisation :
+historisation des données, modèles incrémentaux, déploiement dans Streamlit in Snowflake, alertes et
+intégration continue.
+
+\section{Le jeu de données Wide World Importers}
+
+\emph{Wide World Importers} (WWI) est la base d'exemple de référence publiée par Microsoft pour SQL
+Server depuis la version 2016. Elle modélise l'activité d'une entreprise fictive de distribution en gros
+d'articles de nouveauté (jouets, mugs, t-shirts, articles d'emballage, gadgets USB\ldots) basée aux
+États-Unis, entre janvier 2013 et mai 2016.
+
+Microsoft fournit deux sauvegardes :
+\begin{itemize}
+  \item \texttt{WideWorldImporters-Full.bak} : la base \textbf{transactionnelle (OLTP)} ;
+  \item \texttt{WideWorldImportersDW-Full.bak} : un entrepôt de données déjà modélisé (OLAP).
+\end{itemize}
+
+Le projet utilise volontairement la base \textbf{OLTP} : elle joue le rôle du système source, et c'est
+la plateforme développée qui reconstruit l'entrepôt analytique. Utiliser la version DW aurait vidé le
+travail de modélisation de sa substance.
+
+La base comprend quatre schémas métier, présentés dans le tableau~\ref{tab:wwi-schemas}.
+
+\begin{table}[H]
+\centering
+\caption{Schémas métier de la base WideWorldImporters (OLTP)}
+\label{tab:wwi-schemas}
+\begin{tabularx}{\linewidth}{@{}l X r@{}}
+\toprule
+\textbf{Schéma} & \textbf{Contenu et principales tables} & \textbf{Lignes (max.)} \\
+\midrule
+\texttt{Sales} & Clients, commandes, factures, transactions clients (\texttt{Invoices},
+  \texttt{InvoiceLines}, \texttt{Orders}, \texttt{OrderLines}, \texttt{Customers}) & 231\,412 \\
+\texttt{Purchasing} & Fournisseurs, bons de commande, transactions fournisseurs & 8\,367 \\
+\texttt{Warehouse} & Articles, stocks, mouvements de stock, groupes d'articles & 236\,667 \\
+\texttt{Application} & Référentiels : villes, provinces, pays, personnes, modes de livraison et de
+  paiement & 37\,940 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Plusieurs caractéristiques de WWI en font un cas d'étude réaliste et exigeant :
+\begin{itemize}
+  \item des \textbf{tables temporelles} (\emph{system-versioned}) qui conservent l'historique de chaque
+        modification dans des tables d'archive (\texttt{*\_Archive}) ;
+  \item une colonne \texttt{LastEditedWhen} sur les tables transactionnelles, exploitable pour
+        l'ingestion incrémentale ;
+  \item des types de données spécifiques à SQL Server (\texttt{geography}, \texttt{varbinary}) et des
+        champs JSON (\texttt{CustomFields}) ;
+  \item des tables \emph{In-Memory OLTP} (optimisées en mémoire).
+\end{itemize}

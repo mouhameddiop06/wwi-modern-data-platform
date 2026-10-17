@@ -6,14 +6,16 @@ Question (français) -> Snowflake Cortex Analyst -> SQL sur la couche GOLD -> ta
     streamlit run app/streamlit_app.py
 """
 import re
+from pathlib import Path
 
 import altair as alt
 import pandas as pd
 import streamlit as st
+from cortex_analyst import get_backend
 
-from cortex_analyst import ask_analyst, connect, run_sql
+LOGO = Path(__file__).resolve().parent / "LOGO-UCAD.png"
 
-st.set_page_config(page_title="WWI Insights", page_icon="📊", layout="wide")
+st.set_page_config(page_title="WWI Insights — UCAD", page_icon=str(LOGO), layout="wide")
 
 TIME_RE = re.compile(r"date|mois|month|jour|day|ann[ée]e|year|semaine|week|trimestre|quarter|periode|period", re.I)
 
@@ -31,19 +33,40 @@ EXAMPLES = [
 
 # ------------------------------------------------------------------ connexion
 @st.cache_resource(show_spinner="Connexion à Snowflake…")
-def get_connection():
-    return connect()
+def backend():
+    """Local : connecteur + .env ; Streamlit in Snowflake : session active."""
+    return get_backend()
 
 
-def with_reconnect(fn, *args):
-    """Rejoue l'appel une fois avec une nouvelle connexion si la session a expiré."""
-    try:
-        return fn(get_connection(), *args)
-    except Exception as exc:  # noqa: BLE001
-        if any(s in str(exc) for s in ("390112", "401", "expired", "Authentication token")):
-            get_connection.clear()
-            return fn(get_connection(), *args)
-        raise
+# ------------------------------------------------------------------ en-tête / pied de page
+def render_header() -> None:
+    col_logo, col_title = st.columns([1, 9])
+    with col_logo:
+        st.image(str(LOGO), width=96)
+    with col_title:
+        st.markdown(
+            "<div style='line-height:1.25'>"
+            "<div style='font-size:1.55rem;font-weight:700;letter-spacing:.02em'>"
+            "UNIVERSITÉ CHEIKH ANTA DIOP DE DAKAR</div>"
+            "<div style='font-size:1rem;opacity:.8'>Faculté des Sciences et Techniques</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    st.divider()
+
+
+def render_footer() -> None:
+    st.divider()
+    st.markdown(
+        "<div style='text-align:center;font-size:.85rem;opacity:.75;line-height:1.6'>"
+        "<b>Département de Mathématiques et Informatique</b><br>"
+        "Section Informatique<br>"
+        "Master II Informatique, Option Business Intelligence<br>"
+        "Projet : Modern Data Platform (architecture Médaillon) &amp; application Text-to-SQL "
+        "avec Snowflake Cortex AI — Encadrant : Dr Jean Gane SARR"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 # ------------------------------------------------------------------ affichage
@@ -66,7 +89,7 @@ def render_chart(df: pd.DataFrame) -> None:
     # Une seule valeur -> indicateur
     if len(df) == 1 and len(numeric) >= 1 and len(df.columns) <= 3:
         cols = st.columns(len(numeric))
-        for col, name in zip(cols, numeric):
+        for col, name in zip(cols, numeric, strict=True):
             col.metric(name.replace("_", " ").capitalize(), f"{df[name].iloc[0]:,.2f}".replace(",", " "))
         return
     if not numeric or not others:
@@ -144,11 +167,11 @@ def process(question: str) -> None:
     st.session_state.display.append({"role": "user", "text": question})
     msg = {"role": "assistant"}
     try:
-        answer = with_reconnect(ask_analyst, st.session_state.history)
+        answer = backend().ask(st.session_state.history)
         st.session_state.history.append({"role": "analyst", "content": answer.raw_content})
         msg.update(text=answer.text, sql=answer.sql, suggestions=answer.suggestions)
         if answer.sql:
-            msg["df"] = with_reconnect(run_sql, answer.sql)
+            msg["df"] = backend().run_sql(answer.sql)
     except Exception as exc:  # noqa: BLE001
         st.session_state.history.pop()  # garde un historique alterné user/analyst valide
         msg["error"] = f"Impossible de répondre à cette question : {exc}"
@@ -157,7 +180,8 @@ def process(question: str) -> None:
 
 # ------------------------------------------------------------------ barre latérale
 with st.sidebar:
-    st.header("📊 WWI Insights")
+    st.image(str(LOGO), width=72)
+    st.header("WWI Insights")
     st.caption("Posez vos questions en français : Cortex AI génère le SQL, l'exécute sur la couche **Gold** "
                "de Snowflake et affiche les résultats.")
     st.subheader("Exemples")
@@ -172,6 +196,7 @@ with st.sidebar:
                "Accès en lecture seule (rôle WWI_ANALYST).")
 
 # ------------------------------------------------------------------ page principale
+render_header()
 st.title("Interrogez vos données en langage naturel")
 
 if not st.session_state.display:
@@ -195,3 +220,5 @@ if question:
         with st.spinner("Cortex AI analyse votre question…"):
             process(question)
         render_answer(st.session_state.display[-1], key=str(len(st.session_state.display) - 1))
+
+render_footer()

@@ -1,3 +1,10 @@
+{{ config(
+    materialized='incremental',
+    unique_key='order_id',
+    incremental_strategy='merge',
+    on_schema_change='append_new_columns'
+) }}
+
 select
     order_id,
     customer_id,
@@ -11,4 +18,5 @@ select
     picking_completed_when,
     last_edited_when
 from {{ source('bronze', 'sales_orders') }}
+{{ incremental_filter() }}
 {{ dedup('order_id', 'last_edited_when') }}

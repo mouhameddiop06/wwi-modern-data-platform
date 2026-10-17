@@ -1,0 +1,7 @@
+# Dépendances de l'application dans Streamlit in Snowflake (canal Anaconda Snowflake)
+name: sf_env
+channels:
+  - snowflake
+dependencies:
+  - pandas
+  - altair

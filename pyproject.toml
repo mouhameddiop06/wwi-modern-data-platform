@@ -1,0 +1,12 @@
+[project]
+name = "wwi-modern-data-platform"
+version = "1.0.0"
+description = "Modern Data Platform WWI : DLT, dbt, Dagster, Snowflake et Streamlit + Cortex Analyst"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["transform/wwi_dbt/target", "transform/wwi_dbt/logs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]

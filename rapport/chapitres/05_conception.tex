@@ -1,0 +1,177 @@
+\chapter{Architecture et conception}
+\label{ch:conception}
+
+\section{Architecture globale}
+
+La figure~\ref{fig:archi} présente l'architecture retenue. Elle suit le cheminement de la donnée, du
+système source jusqu'au décideur.
+
+\begin{figure}[H]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}
+  % --- ligne 1 : restitution
+  \node[circle, draw, fill=ucadblue!15, minimum size=1.5cm, font=\footnotesize\bfseries] (u) at (0,3.0) {Décideur};
+  \node[box, fill=green!8] (st) at (3.9,3.0) {\textbf{Streamlit}\\ \scriptsize local ou in Snowflake};
+  \node[box, fill=snow!15] (ca) at (11.9,3.0) {\textbf{Cortex Analyst}\\ \scriptsize + modèle sémantique};
+  % --- ligne 2 : flux de données
+  \node[box, fill=red!6] (sql) at (0,0) {\textbf{SQL Server}\\ \scriptsize base WWI (OLTP)};
+  \node[box, fill=violet!8] (dlt) at (3.9,0) {\textbf{DLT}\\ \scriptsize ingestion incrémentale};
+  \node[layer, fill=bronze] (b) at (7.9,0) {BRONZE\\[-1pt]\scriptsize\mdseries 30 tables};
+  \node[layer, fill=silver] (s) at (10.6,0) {SILVER\\[-1pt]\scriptsize\mdseries 29 modèles};
+  \node[layer, fill=gold] (g) at (13.3,0) {GOLD\\[-1pt]\scriptsize\mdseries étoile + SCD2};
+  % --- ligne 3 : transformation et orchestration
+  \node[box, fill=orange!8] (dbt) at (10.6,-2.2) {\textbf{dbt}\\ \scriptsize transformations + tests};
+  \node[draw=ucaddark, dashed, rounded corners=4pt, fill=ucaddark!5, minimum width=11.2cm, minimum height=0.8cm,
+        font=\footnotesize\bfseries, text=ucaddark] (dag) at (7.2,-3.9)
+        {Dagster : orchestration (job quotidien, reprise sur erreur, alertes)};
+
+  \begin{scope}[on background layer]
+    \node[draw=snow, very thick, rounded corners=6pt, fill=snow!5, inner sep=9pt,
+          fit=(b)(s)(g)(dbt)(ca),
+          label={[font=\small\bfseries, text=snow!60!black, anchor=south east]north east:Snowflake --- WWI\_DB}] {};
+  \end{scope}
+
+  % flux de données
+  \draw[flow] (sql) -- node[lbl, above]{extraction} (dlt);
+  \draw[flow] (dlt) -- node[lbl, above]{chargement} (b);
+  \draw[flow] (b) -- (s);
+  \draw[flow] (s) -- (g);
+  \draw[flow, densely dashed] (dbt.west) -| (b.south);
+  \draw[flow, densely dashed] (dbt) -- (s);
+  \draw[flow, densely dashed] (dbt.east) -| (g.south);
+  % orchestration
+  \draw[flow, densely dotted] (dag.north -| dlt) -- (dlt.south);
+  \draw[flow, densely dotted] (dag.north -| dbt) -- (dbt.south);
+  % restitution
+  \draw[flow] ([yshift=4pt]u.east) -- node[lbl, above]{question} ([yshift=4pt]st.west);
+  \draw[flow] ([yshift=-4pt]st.west) -- node[lbl, below]{réponse} ([yshift=-4pt]u.east);
+  \draw[flow] ([yshift=5pt]st.east) -- node[lbl, above]{question + historique} ([yshift=5pt]ca.west);
+  \draw[flow] ([yshift=-5pt]ca.west) -- node[lbl, below]{SQL généré} ([yshift=-5pt]st.east);
+  \draw[flow, {Stealth[length=2.6mm]}-{Stealth[length=2.6mm]}] (st.south) |- node[lbl, pos=0.75]{exécution du SQL (lecture seule) / résultats} (13.3,1.45) -- (g.north);
+\end{tikzpicture}}
+\caption{Architecture globale de la Modern Data Platform}
+\label{fig:archi}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Rôle de chaque composant et versions utilisées}
+\label{tab:stack}
+\begin{tabularx}{\linewidth}{@{}l l X@{}}
+\toprule
+\textbf{Étape} & \textbf{Outil (version)} & \textbf{Rôle} \\
+\midrule
+Source & SQL Server 2025 Developer & Base OLTP WideWorldImporters \\
+Ingestion & DLT 1.31 & Extraction SQL Server $\rightarrow$ Snowflake BRONZE, incrémental + merge \\
+Stockage & Snowflake (AWS US West 2) & Base \texttt{WWI\_DB}, schémas BRONZE, SILVER, GOLD, APP \\
+Transformation & dbt-core 1.12 & Modèles SQL versionnés, tests, snapshots, documentation \\
+Orchestration & Dagster 1.13 & Lignage DLT $\rightarrow$ dbt, planning, reprise, alertes \\
+IA & Snowflake Cortex Analyst & Traduction question $\rightarrow$ SQL sur la couche Gold \\
+Interface & Streamlit 1.66 & Conversation, SQL généré, graphiques, export CSV \\
+CI/CD & GitHub Actions & Lint, \texttt{dbt build} sur clone, déploiement de l'application \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Organisation de l'environnement Snowflake}
+
+\subsection{Objets}
+Un script d'initialisation (\texttt{snowflake/00\_setup.sql}) crée l'ensemble des objets :
+\begin{itemize}
+  \item l'entrepôt de calcul \texttt{WWI\_WH}, de taille XS, suspendu automatiquement après 60 secondes
+        d'inactivité afin d'économiser les crédits ;
+  \item la base \texttt{WWI\_DB} et ses schémas \texttt{BRONZE}, \texttt{SILVER}, \texttt{GOLD}, ainsi
+        que \texttt{APP} pour l'application ;
+  \item l'utilisateur technique \texttt{WWI\_PIPELINE\_USER} utilisé par les pipelines.
+\end{itemize}
+
+\subsection{Sécurité par les rôles}
+Le principe du \textbf{moindre privilège} est appliqué au moyen de deux rôles (figure~\ref{fig:rbac}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.6cm and 1.0cm]
+  \node[box, fill=red!8, text width=3.2cm] (sys) {\textbf{SYSADMIN}};
+  \node[box, fill=orange!10, below=of sys, text width=3.2cm] (eng) {\textbf{WWI\_ENGINEER}\\ \scriptsize pipelines DLT, dbt, Dagster};
+  \node[box, fill=green!10, below=of eng, text width=3.2cm] (ana) {\textbf{WWI\_ANALYST}\\ \scriptsize application Text-to-SQL};
+  \draw[flow] (eng) -- (sys);
+  \draw[flow] (ana) -- (eng);
+  \node[right=of eng, text width=6.3cm, font=\footnotesize, align=left] {Propriétaire de \texttt{WWI\_DB} : lecture/écriture
+    sur BRONZE, SILVER, GOLD ; création des objets.};
+  \node[right=of ana, text width=6.3cm, font=\footnotesize, align=left] {\texttt{SELECT} sur GOLD uniquement, usage de
+    l'entrepôt, rôle de base de données \texttt{SNOWFLAKE.CORTEX\_USER}.};
+\end{tikzpicture}
+\caption{Hiérarchie des rôles Snowflake (une flèche signifie « est accordé à »)}
+\label{fig:rbac}
+\end{figure}
+
+L'application Text-to-SQL s'exécute exclusivement avec \texttt{WWI\_ANALYST} : même si le modèle de
+langage générait une requête malveillante, le rôle n'aurait pas le droit de modifier ni même de lire les
+couches Bronze et Silver.
+
+\section{Conception du modèle de données}
+
+\subsection{Couche Bronze}
+La couche Bronze reproduit fidèlement les tables sources. Les tables sont nommées
+\texttt{<schéma>\_<table>} en \emph{snake\_case} (\texttt{Sales.InvoiceLines} devient
+\texttt{sales\_invoice\_lines}) afin d'éviter les collisions entre schémas et de conserver l'origine
+de chaque table.
+
+\subsection{Couche Silver}
+Chaque table Silver (préfixe \texttt{slv\_}) correspond à une table Bronze, nettoyée selon des règles
+communes factorisées dans des macros dbt (section~\ref{sec:silver}). Deux modèles supplémentaires
+reconstituent l'historique complet des produits et des clients.
+
+\subsection{Couche Gold : schéma en étoile}
+La couche Gold est un schéma en étoile (constellation de faits) centré sur six processus métier
+(figure~\ref{fig:etoile}).
+
+\begin{figure}[H]
+\centering
+\resizebox{0.98\linewidth}{!}{%
+\begin{tikzpicture}[
+    fact/.style={draw, fill=gold!25, rounded corners=2pt, font=\scriptsize\bfseries, minimum width=3.1cm, minimum height=0.75cm, align=center},
+    dim/.style={draw, fill=ucadblue!12, rounded corners=2pt, font=\scriptsize\bfseries, minimum width=2.6cm, minimum height=0.75cm, align=center},
+    hist/.style={draw, fill=violet!12, rounded corners=2pt, font=\scriptsize\bfseries, minimum width=3.1cm, minimum height=0.75cm, align=center},
+    rel/.style={draw=black!45, thin}]
+  \node[fact] (fs) at (0,0) {fact\_sales\\[-2pt]\tiny\mdseries ligne de facture};
+  \node[fact] (fo) at (0,-2.2) {fact\_orders\\[-2pt]\tiny\mdseries ligne de commande};
+  \node[fact] (fct) at (-4.6,-2.2) {fact\_customer\_transactions\\[-2pt]\tiny\mdseries transaction client};
+  \node[fact] (fp) at (6.2,-2.2) {fact\_purchases\\[-2pt]\tiny\mdseries ligne d'achat};
+  \node[fact] (fm) at (6.2,1.6) {fact\_stock\_movements\\[-2pt]\tiny\mdseries mouvement de stock};
+  \node[fact] (fh) at (9.6,-0.3) {fact\_stock\_holdings\\[-2pt]\tiny\mdseries produit (photo)};
+
+  \node[dim] (dc) at (-4.6,0) {dim\_customer};
+  \node[dim] (dd) at (0,2.2) {dim\_date};
+  \node[dim] (de) at (-3.3,2.2) {dim\_employee};
+  \node[dim] (dci) at (-6.9,1.6) {dim\_city};
+  \node[dim] (dp) at (3.4,0) {dim\_product};
+  \node[dim] (ds) at (6.2,-4.2) {dim\_supplier};
+
+  \node[hist] (hp) at (3.4,-4.2) {dim\_product\_history\\[-2pt]\tiny\mdseries SCD2 (prix)};
+  \node[hist] (hc) at (-4.6,-4.2) {dim\_customer\_history\\[-2pt]\tiny\mdseries SCD2 (crédit, catégorie)};
+  \node[hist] (hs) at (9.6,-2.4) {fact\_stock\_history\\[-2pt]\tiny\mdseries snapshot dbt};
+
+  \foreach \a/\b in {fs/dc, fs/dd, fs/de, fs/dp, fs/dci, fo/dc, fo/dp, fo/dd, fo/de, fct/dc, fp/ds, fp/dp, fm/dp, fh/dp, dp/ds, dc/dci, hp/dp, hc/dc, hs/fh}
+    \draw[rel] (\a) -- (\b);
+\end{tikzpicture}}
+\caption{Schéma en étoile de la couche Gold (jaune : faits, bleu : dimensions, violet : historisation)}
+\label{fig:etoile}
+\end{figure}
+
+Les principaux choix de conception sont les suivants :
+\begin{itemize}
+  \item \textbf{grain fin} : les faits de ventes, commandes et achats sont au niveau de la ligne de
+        document, ce qui permet tous les agrégats ;
+  \item \textbf{clés naturelles} : les identifiants de la source (\texttt{customer\_id},
+        \texttt{stock\_item\_id}\ldots) servent de clés. Ce choix simplifie les jointures générées par
+        l'IA ; l'historisation est portée par des tables SCD2 dédiées, dotées de clés de substitution ;
+  \item \textbf{dimensions dénormalisées} : la géographie (ville $\rightarrow$ province $\rightarrow$
+        pays $\rightarrow$ continent) est aplatie dans \texttt{dim\_city} et reprise dans
+        \texttt{dim\_customer} ;
+  \item \textbf{dimensions dégénérées} : les attributs de faible cardinalité (mode de livraison, type de
+        transaction, moyen de paiement) sont stockés directement dans les faits ;
+  \item \textbf{libellés français} dans \texttt{dim\_date} (mois et jours) pour faciliter la lecture des
+        résultats.
+\end{itemize}

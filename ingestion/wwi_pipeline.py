@@ -4,7 +4,7 @@ Pipeline DLT : SQL Server (WideWorldImporters) -> Snowflake (WWI_DB.BRONZE)
 Stratégie de chargement par table :
   - colonne LastEditedWhen  -> incrémental + merge sur la clé primaire
   - table temporelle (ValidFrom) -> incrémental + merge sur la clé primaire
-  - sinon                    -> remplacement complet (replace)
+  - sinon (dont tables *_Archive sans clé) -> remplacement complet (replace)
 
 Colonnes exclues : types spatiaux (geography) et binaires (photos, mots de passe hachés),
 inutiles pour l'analyse et non supportés tels quels par Snowflake.
@@ -70,6 +70,9 @@ TABLES: list[str] = [
     "Warehouse.StockItems",
     "Warehouse.StockItemStockGroups",
     "Warehouse.StockItemTransactions",
+    # Historique des tables temporelles (versions passées) -> dimensions SCD2
+    "Sales.Customers_Archive",
+    "Warehouse.StockItems_Archive",
 ]
 
 EXCLUDED_TYPES = ("GEOGRAPHY", "GEOMETRY", "VARBINARY", "IMAGE", "BINARY")
@@ -117,8 +120,10 @@ def build_resources(engine: sa.Engine, tables: list[str]):
     for full_name in tables:
         schema, name = full_name.split(".")
         columns = {c["name"] for c in inspector.get_columns(name, schema=schema)}
-        cursor = next((c for c in CURSOR_COLUMNS if c in columns), None)
         pk = inspector.get_pk_constraint(name, schema=schema)["constrained_columns"]
+        # Incrémental uniquement avec une clé de fusion : sans clé, un "replace"
+        # incrémental écraserait la table avec les seules nouvelles lignes
+        cursor = next((c for c in CURSOR_COLUMNS if c in columns), None) if pk else None
 
         resource = sql_table(
             credentials=engine,
@@ -131,7 +136,7 @@ def build_resources(engine: sa.Engine, tables: list[str]):
         )
         # Nom cible : sales_invoice_lines, warehouse_stock_items, ...
         resource = resource.with_name(f"{schema}_{name}")
-        if cursor and pk:
+        if cursor:
             resource.apply_hints(write_disposition="merge", primary_key=pk)
         else:
             resource.apply_hints(write_disposition="replace")

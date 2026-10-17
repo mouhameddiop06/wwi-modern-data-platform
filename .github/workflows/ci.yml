@@ -1,0 +1,92 @@
+# Intégration continue de la Modern Data Platform WWI
+#   1. qualite : lint Python, compilation, validation des fichiers YAML
+#   2. dbt     : dbt build complet sur un clone « zéro copie » de WWI_DB
+#   3. deploy  : sur la branche main, redéploie l'application Streamlit in Snowflake
+#
+# Secrets GitHub requis (Settings > Secrets and variables > Actions) :
+#   SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+  SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+  SNOWFLAKE_ROLE: WWI_ENGINEER
+  SNOWFLAKE_WAREHOUSE: WWI_WH
+
+jobs:
+  qualite:
+    name: Qualité du code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Installer les outils
+        run: pip install ruff pyyaml
+      - name: Lint Python (ruff)
+        run: ruff check .
+      - name: Compilation des scripts Python
+        run: python -m compileall -q ingestion orchestration app deploy ci
+      - name: Validation des fichiers YAML
+        run: |
+          python - <<'EOF'
+          import pathlib, sys, yaml
+          files = [p for p in pathlib.Path(".").rglob("*.y*ml") if ".github" not in p.parts]
+          for p in files:
+              yaml.safe_load(p.read_text(encoding="utf-8"))
+          model = yaml.safe_load(open("app/semantic_model.yaml", encoding="utf-8"))
+          assert model["tables"] and model["relationships"], "modèle sémantique incomplet"
+          print(f"{len(files)} fichiers YAML valides")
+          EOF
+
+  dbt:
+    name: dbt build (clone de test)
+    needs: qualite
+    runs-on: ubuntu-latest
+    env:
+      SNOWFLAKE_DATABASE: WWI_DB_CI_${{ github.run_id }}
+      DBT_DIR: transform/wwi_dbt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Installer dbt
+        run: pip install "dbt-core>=1.10" "dbt-snowflake>=1.10"
+      - name: Cloner WWI_DB (zéro copie)
+        run: python ci/snowflake_clone.py create "$SNOWFLAKE_DATABASE"
+      - name: dbt build (modèles, snapshots, tests)
+        run: dbt build --project-dir "$DBT_DIR" --profiles-dir "$DBT_DIR"
+      - name: Supprimer le clone
+        if: always()
+        run: python ci/snowflake_clone.py drop "$SNOWFLAKE_DATABASE"
+
+  deploy:
+    name: Déployer Streamlit in Snowflake
+    needs: dbt
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      SNOWFLAKE_DATABASE: WWI_DB
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Installer le connecteur Snowflake
+        run: pip install snowflake-connector-python python-dotenv
+      - name: Déployer l'application
+        run: python deploy/deploy_sis.py

@@ -1,0 +1,14 @@
+version: 2
+
+snapshots:
+  - name: snp_stock_item_holdings
+    description: >
+      Historisation (SCD2) du niveau de stock : la source ne garde que la valeur courante,
+      le snapshot enregistre une nouvelle version à chaque changement détecté lors d'une exécution.
+    relation: ref('slv_stock_item_holdings')
+    config:
+      schema: SILVER
+      unique_key: stock_item_id
+      strategy: check
+      check_cols: [quantity_on_hand, last_cost_price, reorder_level, target_stock_level]
+      hard_deletes: invalidate

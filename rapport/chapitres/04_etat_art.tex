@@ -1,0 +1,157 @@
+\chapter{Concepts et technologies}
+\label{ch:etatart}
+
+\section{De l'ETL à la Modern Data Stack}
+
+Les chaînes décisionnelles classiques reposent sur le modèle \textbf{ETL} (\emph{Extract, Transform,
+Load}) : les données sont transformées par un outil dédié avant d'être chargées dans l'entrepôt. Avec
+l'arrivée des entrepôts de données dans le cloud, dont la puissance de calcul est élastique, le modèle
+\textbf{ELT} s'est imposé : les données sont d'abord chargées brutes dans l'entrepôt, puis transformées
+\emph{dans} l'entrepôt, en SQL.
+
+La \textbf{Modern Data Stack} désigne l'ensemble d'outils spécialisés et interopérables qui
+accompagnent ce modèle :
+\begin{itemize}
+  \item un \textbf{entrepôt cloud} séparant stockage et calcul (Snowflake, BigQuery, Redshift\ldots) ;
+  \item un outil d'\textbf{ingestion} déclaratif (Fivetran, Airbyte, DLT\ldots) ;
+  \item un outil de \textbf{transformation} versionné et testé (dbt) ;
+  \item un \textbf{orchestrateur} (Airflow, Dagster, Prefect) ;
+  \item des outils de \textbf{restitution} (tableaux de bord, applications analytiques, IA).
+\end{itemize}
+
+Cette approche applique à la donnée les pratiques du génie logiciel : gestion de versions, tests
+automatisés, revue de code, intégration continue et déploiement reproductible.
+
+\section{L'architecture Médaillon}
+
+L'architecture Médaillon, popularisée par Databricks, organise les données d'un \emph{lakehouse} ou d'un
+entrepôt en trois couches de qualité croissante (figure~\ref{fig:medaillon}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=1.3cm]
+  \node[layer, fill=bronze] (b) {BRONZE\\[-1pt]\scriptsize\mdseries données brutes};
+  \node[layer, fill=silver, right=of b] (s) {SILVER\\[-1pt]\scriptsize\mdseries données nettoyées};
+  \node[layer, fill=gold, right=of s] (g) {GOLD\\[-1pt]\scriptsize\mdseries données métier};
+  \draw[flow] (b) -- (s);
+  \draw[flow] (s) -- (g);
+  \node[below=0.25cm of b, text width=3.4cm, align=center, font=\scriptsize]
+    {Copie fidèle de la source,\\ historique d'ingestion,\\ aucune règle métier};
+  \node[below=0.25cm of s, text width=3.4cm, align=center, font=\scriptsize]
+    {Typage, nettoyage,\\ dédoublonnage,\\ normalisation, conformité};
+  \node[below=0.25cm of g, text width=3.4cm, align=center, font=\scriptsize]
+    {Modèle en étoile,\\ indicateurs, agrégats,\\ prêt pour l'analyse et l'IA};
+\end{tikzpicture}
+\caption{Principe de l'architecture Médaillon}
+\label{fig:medaillon}
+\end{figure}
+
+\begin{itemize}
+  \item \textbf{Bronze} : les données sont chargées telles quelles depuis la source. Cette couche
+        garantit la traçabilité et permet de rejouer les transformations sans réinterroger la source.
+  \item \textbf{Silver} : les données sont nettoyées, typées, dédoublonnées et conformées. Elles restent
+        proches de la structure source mais sont fiables.
+  \item \textbf{Gold} : les données sont modélisées pour un usage métier --- ici un schéma en étoile ---
+        et directement exploitables par les outils d'analyse et par l'IA.
+\end{itemize}
+
+\section{La modélisation dimensionnelle}
+
+La couche Gold suit la \textbf{modélisation dimensionnelle} de Ralph Kimball, qui organise les données
+autour :
+\begin{itemize}
+  \item de \textbf{tables de faits}, qui enregistrent des événements mesurables (une ligne de facture,
+        un mouvement de stock) avec leurs mesures numériques (quantité, montant, bénéfice) ;
+  \item de \textbf{tables de dimensions}, qui décrivent le contexte de ces événements (qui, quoi, où,
+        quand) avec des attributs descriptifs (nom du client, catégorie, ville, mois\ldots).
+\end{itemize}
+
+Le \textbf{grain} d'une table de faits --- le niveau de détail d'une ligne --- est la décision de
+conception centrale. Ce modèle simplifie fortement les requêtes analytiques : un indicateur s'obtient
+par agrégation des faits et regroupement selon des attributs de dimensions, avec des jointures simples
+et prévisibles. Cette propriété est précieuse pour la génération automatique de SQL par un LLM.
+
+\subsection{Dimensions à évolution lente (SCD)}
+Les attributs des dimensions changent dans le temps : un produit change de prix, un client de plafond de
+crédit. Kimball propose plusieurs stratégies, dont :
+\begin{itemize}
+  \item \textbf{SCD de type 1} : l'ancienne valeur est écrasée (pas d'historique) ;
+  \item \textbf{SCD de type 2} : chaque changement crée une nouvelle ligne, avec une période de
+        validité (\texttt{valid\_from}, \texttt{valid\_to}) et un indicateur de version courante.
+\end{itemize}
+
+\section{Les outils de la plateforme}
+
+\subsection{SQL Server}
+SGBD relationnel de Microsoft, utilisé ici comme \textbf{système source} transactionnel hébergeant la
+base WideWorldImporters (SQL Server 2025, édition Developer).
+
+\subsection{Snowflake}
+Snowflake est un entrepôt de données proposé en SaaS sur les principaux clouds. Il sépare le
+\textbf{stockage} (facturé au volume) du \textbf{calcul}, assuré par des \emph{virtual warehouses}
+dimensionnables, suspendus automatiquement lorsqu'ils sont inactifs. Il offre notamment :
+\begin{itemize}
+  \item un contrôle d'accès par rôles (RBAC) hiérarchiques ;
+  \item le \textbf{clonage zéro copie} (\emph{zero-copy cloning}) d'une base entière, instantané et sans
+        duplication physique des données ;
+  \item la \emph{Time Travel} et des \emph{resource monitors} pour maîtriser la consommation ;
+  \item \textbf{Snowflake Cortex}, une suite de services d'IA exécutés au sein de la plateforme, dont
+        \textbf{Cortex Analyst} pour le Text-to-SQL ;
+  \item \textbf{Streamlit in Snowflake}, l'hébergement d'applications Streamlit directement dans le
+        compte, sans infrastructure à gérer.
+\end{itemize}
+
+\subsection{DLT (data load tool)}
+DLT est une bibliothèque Python open source d'ingestion de données. Elle extrait les données d'une source
+(ici une base SQL via SQLAlchemy), infère et fait évoluer le schéma cible, normalise les noms, et charge
+les données dans la destination. Elle gère nativement le \textbf{chargement incrémental} (curseur sur
+une colonne de date) et les modes d'écriture \texttt{append}, \texttt{replace} et \texttt{merge}
+(fusion sur clé primaire), ainsi que la conservation de l'état entre deux exécutions.
+
+\subsection{dbt (data build tool)}
+dbt permet d'écrire les transformations sous forme de modèles \texttt{SELECT} en SQL enrichi de Jinja.
+dbt résout les dépendances entre modèles (fonction \texttt{ref()}), les matérialise dans l'entrepôt
+(vues, tables, tables incrémentales), exécute des \textbf{tests} de qualité (unicité, non-nullité,
+intégrité référentielle, tests personnalisés), génère la \textbf{documentation} et le \textbf{lignage},
+et propose des \textbf{snapshots} pour historiser des données en SCD de type 2.
+
+\subsection{Dagster}
+Dagster est un orchestrateur orienté \emph{assets} : au lieu de décrire des tâches, on déclare les
+\textbf{actifs de données} produits (tables, modèles) et leurs dépendances. Dagster en déduit le graphe
+d'exécution, offre une interface de visualisation du lignage, des planifications (\emph{schedules}), des
+capteurs (\emph{sensors}), des politiques de reprise sur erreur, et des contrôles de qualité
+(\emph{asset checks}). Ses intégrations \texttt{dagster-dlt} et \texttt{dagster-dbt} transforment
+automatiquement chaque table DLT et chaque modèle dbt en asset, reliés dans un même lignage.
+
+Le sujet laissait le choix entre Dagster et Airflow ; Dagster a été retenu car il est explicitement
+recommandé par l'énoncé, que son approche par assets correspond naturellement à une architecture en
+couches, et qu'il s'intègre nativement avec DLT et dbt.
+
+\subsection{Streamlit}
+Streamlit est un cadriciel Python permettant de construire rapidement des applications web de données
+interactives, sans développement front-end : composants de saisie, tableaux, graphiques, interface de
+conversation (\emph{chat}).
+
+\section{Le Text-to-SQL et Snowflake Cortex Analyst}
+
+Le \textbf{Text-to-SQL} consiste à traduire une question en langage naturel en une requête SQL
+exécutable. Les grands modèles de langage ont fait progresser considérablement cette tâche, mais une
+génération « naïve » --- envoyer la question et la liste des colonnes à un LLM --- reste fragile :
+ambiguïté des termes métier (« ventes » : HT ou TTC ?), jointures erronées, colonnes inventées,
+calculs incorrects.
+
+\textbf{Cortex Analyst} est le service de Snowflake dédié à ce problème. Il s'appuie sur un
+\textbf{modèle sémantique} (fichier YAML) qui décrit :
+\begin{itemize}
+  \item les tables logiques et leurs colonnes, classées en \emph{dimensions}, \emph{dimensions
+        temporelles}, \emph{faits} et \emph{métriques} ;
+  \item des descriptions et des \textbf{synonymes} métier (par exemple « CA » pour le chiffre d'affaires) ;
+  \item les \textbf{relations} (jointures) entre tables ;
+  \item des \textbf{requêtes vérifiées} (\emph{verified queries}) servant d'exemples de référence ;
+  \item des instructions personnalisées (langue de réponse, conventions de calcul).
+\end{itemize}
+
+Cortex Analyst s'expose sous forme d'API REST : il reçoit la conversation et le modèle sémantique, et
+renvoie une interprétation de la question, la requête SQL générée ou, en cas d'ambiguïté, des
+suggestions de reformulation. Il ne fait qu'\emph{écrire} le SQL : son exécution reste sous le
+contrôle de l'application, avec les droits de l'utilisateur.

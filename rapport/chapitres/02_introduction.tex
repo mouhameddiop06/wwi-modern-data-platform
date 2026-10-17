@@ -1,0 +1,42 @@
+\chapter*{Introduction générale}
+\addcontentsline{toc}{chapter}{Introduction générale}
+\markboth{Introduction générale}{}
+
+Les entreprises produisent aujourd'hui de très grandes quantités de données issues de leurs systèmes
+opérationnels : ventes, achats, stocks, paiements, logistique. Ces données constituent une ressource
+stratégique pour suivre l'activité, mesurer la performance et éclairer la prise de décision. Leur
+exploitation demeure pourtant difficile : elles sont dispersées dans des bases transactionnelles conçues
+pour l'enregistrement des opérations et non pour l'analyse, et leur interrogation exige une maîtrise
+technique, en particulier du langage SQL, que la plupart des décideurs ne possèdent pas.
+
+Deux évolutions récentes changent profondément cette situation. D'une part, l'émergence de la
+\emph{Modern Data Stack} --- entrepôts de données dans le cloud, outils d'ingestion déclaratifs,
+transformations versionnées et testées, orchestrateurs orientés données --- permet d'industrialiser la
+chaîne de valeur de la donnée avec les pratiques du génie logiciel. D'autre part, les progrès des
+grands modèles de langage (LLM) rendent possible l'interrogation des données en langage naturel : une
+question posée en français peut être traduite automatiquement en une requête SQL exécutable.
+
+C'est dans ce double contexte que s'inscrit ce projet, réalisé dans le cadre du Master II Informatique,
+option Business Intelligence, de l'Université Cheikh Anta Diop de Dakar. Il vise à concevoir et à mettre
+en œuvre une \textbf{Modern Data Platform} reposant sur une \textbf{architecture Médaillon} (Bronze,
+Silver, Gold) dans Snowflake, alimentée depuis SQL Server par \textbf{DLT}, transformée avec
+\textbf{dbt} et orchestrée par \textbf{Dagster}, puis à développer une application \textbf{Streamlit}
+de type \emph{Text-to-SQL} s'appuyant sur \textbf{Snowflake Cortex AI} pour permettre aux décideurs
+d'obtenir leurs indicateurs sans écrire une ligne de SQL.
+
+Le présent rapport est organisé comme suit :
+\begin{itemize}
+  \item le \textbf{chapitre~\ref{ch:contexte}} présente le contexte, la problématique, les objectifs et le
+        jeu de données Wide World Importers ;
+  \item le \textbf{chapitre~\ref{ch:etatart}} expose les concepts et technologies mobilisés ;
+  \item le \textbf{chapitre~\ref{ch:conception}} décrit l'architecture retenue et la conception du modèle
+        de données ;
+  \item le \textbf{chapitre~\ref{ch:realisation}} détaille la réalisation de la plateforme : ingestion,
+        couches Silver et Gold, historisation, qualité des données et orchestration ;
+  \item le \textbf{chapitre~\ref{ch:application}} est consacré à l'application Text-to-SQL ;
+  \item le \textbf{chapitre~\ref{ch:industrialisation}} traite de l'industrialisation : traitements
+        incrémentaux, alertes, déploiement dans Snowflake et intégration continue ;
+  \item le \textbf{chapitre~\ref{ch:resultats}} présente les résultats obtenus, les difficultés
+        rencontrées et leurs solutions ;
+  \item enfin, la conclusion dresse le bilan du projet et en propose les perspectives.
+\end{itemize}

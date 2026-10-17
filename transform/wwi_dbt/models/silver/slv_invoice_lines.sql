@@ -1,3 +1,10 @@
+{{ config(
+    materialized='incremental',
+    unique_key='invoice_line_id',
+    incremental_strategy='merge',
+    on_schema_change='append_new_columns'
+) }}
+
 -- Règles métier :
 --   extended_price = montant TTC de la ligne
 --   montant HT     = quantité x prix unitaire
@@ -16,4 +23,5 @@ select
     {{ to_amount('line_profit') }}           as line_profit,
     last_edited_when
 from {{ source('bronze', 'sales_invoice_lines') }}
+{{ incremental_filter() }}
 {{ dedup('invoice_line_id', 'last_edited_when') }}

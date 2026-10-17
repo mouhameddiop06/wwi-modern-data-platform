@@ -232,3 +232,45 @@ models:
               arguments:
                 to: ref('dim_product')
                 field: stock_item_id
+
+  # ============================================================ HISTORISATION (SCD2)
+  - name: dim_product_history
+    description: "Produits historisés (SCD2) : une ligne par version, pour suivre l'évolution des prix."
+    columns:
+      - name: stock_item_version_id
+        data_tests: [unique, not_null]
+      - name: stock_item_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: stock_item_id
+      - name: valid_from
+        description: "Début de validité de la version."
+        data_tests: [not_null]
+      - name: valid_to
+        description: "Fin de validité (NULL pour la version courante)."
+      - name: is_current
+        description: "Vrai pour la version actuellement en vigueur."
+
+  - name: dim_customer_history
+    description: "Clients historisés (SCD2) : une ligne par version (plafond de crédit, catégorie, remise)."
+    columns:
+      - name: customer_version_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_id
+
+  - name: fact_stock_history
+    description: "Historique des niveaux de stock (snapshot dbt exécuté à chaque chargement)."
+    columns:
+      - name: stock_version_id
+        data_tests: [unique, not_null]
+      - name: stock_item_id
+        data_tests: [not_null]

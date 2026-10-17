@@ -3,7 +3,7 @@ version: 2
 sources:
   - name: bronze
     description: "Données brutes WideWorldImporters chargées par DLT depuis SQL Server."
-    database: WWI_DB
+    database: "{{ env_var('SNOWFLAKE_DATABASE', 'WWI_DB') }}"
     schema: BRONZE
     tables:
       - name: application_cities
@@ -33,3 +33,7 @@ sources:
       - name: warehouse_stock_item_stock_groups
       - name: warehouse_colors
       - name: warehouse_package_types
+      - name: sales_customers_archive
+        description: "Versions passées des clients (table d'archive temporelle SQL Server)."
+      - name: warehouse_stock_items_archive
+        description: "Versions passées des articles (table d'archive temporelle SQL Server)."

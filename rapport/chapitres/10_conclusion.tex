@@ -1,0 +1,50 @@
+\chapter*{Conclusion générale et perspectives}
+\addcontentsline{toc}{chapter}{Conclusion générale et perspectives}
+\markboth{Conclusion générale et perspectives}{}
+
+Ce projet avait pour objectif de concevoir une Modern Data Platform capable d'automatiser l'ingestion,
+la transformation et la modélisation des données, et d'offrir aux décideurs une interface leur
+permettant d'interroger ces données en langage naturel.
+
+Cet objectif est atteint. Les données transactionnelles de Wide World Importers sont extraites de
+SQL Server par \textbf{DLT} de manière incrémentale et chargées dans \textbf{Snowflake}, où elles sont
+organisées selon une \textbf{architecture Médaillon}. La couche Bronze conserve une copie fidèle et
+réconciliée de la source ; la couche Silver applique des règles de nettoyage homogènes et factorisées ;
+la couche Gold expose un schéma en étoile complété de dimensions historisées en SCD de type 2. Les
+transformations, développées avec \textbf{dbt}, sont versionnées, documentées et couvertes par plus de
+140 tests. L'ensemble est orchestré par \textbf{Dagster}, qui offre un lignage de bout en bout, une
+exécution quotidienne avec reprise automatique, des contrôles de fraîcheur et des alertes.
+
+L'application \textbf{Streamlit}, adossée à \textbf{Snowflake Cortex Analyst} et à un modèle sémantique
+riche, répond correctement aux questions de l'énoncé et à des questions plus élaborées, y compris des
+questions de suivi, en restituant le SQL généré, un graphique adapté et le tableau des résultats. Sa
+conception place la sécurité au premier plan : contrôle de lecture seule, rôle aux droits minimaux et
+absence d'identifiants dans le code. Déployée aussi dans \textbf{Streamlit in Snowflake} et validée par
+une chaîne d'\textbf{intégration continue} sur clone zéro copie, la plateforme dépasse le stade du
+prototype pour s'approcher d'une solution industrialisée.
+
+Sur le plan personnel, ce projet m'a permis de mettre en pratique l'ensemble de la chaîne de valeur de
+la donnée --- ingénierie, modélisation dimensionnelle, qualité, orchestration, sécurité, DevOps --- et
+de mesurer l'apport, mais aussi les exigences, de l'intelligence artificielle générative appliquée à
+l'analyse de données : un LLM n'est fiable que s'il s'appuie sur un modèle de données propre et sur
+une sémantique métier explicitement décrite.
+
+\section*{Perspectives}
+
+Plusieurs prolongements sont envisageables :
+\begin{itemize}
+  \item \textbf{Enrichissement du modèle sémantique} : nouvelles requêtes vérifiées issues des questions
+        réelles des utilisateurs, publication sous forme de \emph{semantic view} Snowflake, et
+        couverture des historisations SCD2 et des températures d'entrepôt ;
+  \item \textbf{Retour utilisateur} : collecte des appréciations (réponse correcte ou non) pour mesurer
+        en continu la précision du Text-to-SQL ;
+  \item \textbf{Ingestion en quasi temps réel} : exploitation de la capture des changements (CDC) de
+        SQL Server ou d'un ordonnancement plus fréquent ;
+  \item \textbf{Gouvernance} : masquage dynamique des données personnelles, politiques d'accès par ligne
+        (\emph{row access policies}) selon le territoire commercial de l'utilisateur, catalogue de
+        données ;
+  \item \textbf{Observabilité} : tableau de bord de suivi des coûts Snowflake, des durées d'exécution et
+        des résultats des tests ;
+  \item \textbf{Restitution} : tableaux de bord prédéfinis (Power BI, Streamlit) pour les indicateurs
+        récurrents, l'interface conversationnelle restant dédiée aux questions ad hoc.
+\end{itemize}

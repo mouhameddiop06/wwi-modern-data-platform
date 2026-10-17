@@ -1,6 +1,9 @@
 # Modern Data Platform WWI — Architecture Médaillon & Text-to-SQL avec Cortex AI
 
-Projet M2 BI — FST / Département Maths-Info, Université Cheikh Anta Diop (encadrant : Dr Jean Gane SARR).
+Projet de Master II Informatique, option Business Intelligence — Département de Mathématiques et Informatique,
+FST, Université Cheikh Anta Diop de Dakar.
+
+**Réalisé par :** Mouhamed DIOP — **Encadrant :** Dr Jean Gane SARR — **Rapport :** [`rapport/rapport.pdf`](rapport/rapport.pdf)
 
 Plateforme de données moderne construite sur la base **Wide World Importers** (Microsoft) :
 les données transactionnelles de SQL Server sont ingérées dans **Snowflake** avec **DLT**,
@@ -23,8 +26,9 @@ puis interrogées en **langage naturel** depuis une application **Streamlit** gr
 7. [Qualité des données](#7-qualité-des-données)
 8. [Application Text-to-SQL](#8-application-text-to-sql)
 9. [Sécurité](#9-sécurité)
-10. [Limites et pistes d'amélioration](#10-limites-et-pistes-damélioration)
+10. [Industrialisation](#10-industrialisation)
 11. [Dépannage](#11-dépannage)
+12. [Rapport LaTeX](#12-rapport-latex)
 
 ---
 
@@ -97,8 +101,11 @@ projet_pratique_bi/
 ├── dagster.ps1               # Lance l'interface Dagster + le planificateur
 ├── streamlit.ps1             # Lance l'application Text-to-SQL
 │
+├── pyproject.toml            # Configuration du lint (ruff)
+│
 ├── snowflake/
-│   └── 00_setup.sql          # Entrepôt, base, schémas, rôles, utilisateur technique
+│   ├── 00_setup.sql          # Entrepôt, base, schémas, rôles, utilisateur technique
+│   └── 01_ameliorations.sql  # Moniteur de crédits, droit de clonage (CI), schéma APP
 │
 ├── ingestion/                # Couche BRONZE (DLT)
 │   ├── wwi_pipeline.py       # Pipeline SQL Server -> Snowflake
@@ -107,19 +114,28 @@ projet_pratique_bi/
 ├── transform/wwi_dbt/        # Couches SILVER et GOLD (dbt)
 │   ├── dbt_project.yml
 │   ├── profiles.yml          # Connexion Snowflake via variables d'environnement
-│   ├── macros/               # clean_text, to_amount, dedup, generate_schema_name
-│   ├── models/silver/        # 27 modèles slv_* + sources + tests
-│   ├── models/gold/          # 6 dim_* + 6 fact_* + documentation + tests
+│   ├── macros/               # clean_text, to_amount, dedup, surrogate_key, incremental_filter...
+│   ├── models/silver/        # 29 modèles slv_* (dont 2 historiques) + sources + tests
+│   ├── models/gold/          # 6 dim_* + 6 fact_* + 3 tables SCD2 + documentation + tests
+│   ├── snapshots/            # Snapshot dbt du niveau de stock
 │   └── tests/                # Tests métier (réconciliation, cohérence HT/TVA/TTC...)
 │
 ├── orchestration/
-│   └── definitions.py        # Assets DLT + dbt, job, planning, reprise sur erreur
+│   ├── definitions.py        # Assets DLT + dbt, job, planning, reprise sur erreur
+│   └── alerts.py             # Alertes d'échec (Slack / e-mail) + contrôles de fraîcheur
 │
-└── app/                      # Application Text-to-SQL
-    ├── streamlit_app.py      # Interface utilisateur
-    ├── cortex_analyst.py     # Appel Cortex Analyst + exécution SQL sécurisée
-    ├── semantic_model.yaml   # Modèle sémantique de la couche GOLD
-    └── test_questions.py     # Test de bout en bout des questions de référence
+├── app/                      # Application Text-to-SQL
+│   ├── streamlit_app.py      # Interface utilisateur (en-tête et pied de page UCAD)
+│   ├── cortex_analyst.py     # Moteur Cortex Analyst (local ou Streamlit in Snowflake)
+│   ├── semantic_model.yaml   # Modèle sémantique de la couche GOLD
+│   ├── environment.yml       # Dépendances pour Streamlit in Snowflake
+│   ├── LOGO-UCAD.png
+│   └── test_questions.py     # Test de bout en bout des questions de référence
+│
+├── deploy/deploy_sis.py      # Déploiement dans Streamlit in Snowflake
+├── ci/snowflake_clone.py     # Clone zéro copie de WWI_DB pour la CI
+├── .github/workflows/ci.yml  # Intégration et déploiement continus
+└── rapport/                  # Rapport LaTeX (rapport.pdf + sources, build.ps1)
 ```
 
 ---
@@ -160,6 +176,8 @@ sqlcmd -S localhost -E -C -Q "RESTORE DATABASE WideWorldImporters FROM DISK = N'
 1. Créer un compte d'essai sur <https://signup.snowflake.com> (édition **Enterprise**, AWS, région US West ou US East).
 2. Dans une feuille SQL Snowflake, ouvrir [`snowflake/00_setup.sql`](snowflake/00_setup.sql),
    **remplacer le mot de passe** de `WWI_PIPELINE_USER`, puis tout exécuter (*Run All*).
+3. Exécuter ensuite [`snowflake/01_ameliorations.sql`](snowflake/01_ameliorations.sql) (moniteur de
+   crédits, droit de clonage pour la CI, schéma `APP`).
 
 Le script crée :
 
@@ -225,6 +243,9 @@ puis, dans l'interface (<http://localhost:3000>) : **Jobs → wwi_daily_job → 
 | Exécuter le job sans interface | `$env:DAGSTER_HOME="$PWD\.dagster_home"; .venv\Scripts\dagster.exe job execute -m orchestration.definitions -d . -j wwi_daily_job` |
 | Application Text-to-SQL | `.\streamlit.ps1` → <http://localhost:8501> |
 | Tester les questions de référence | `cd app; ..\.venv\Scripts\python.exe test_questions.py` |
+| Déployer dans Streamlit in Snowflake | `.venv\Scripts\python.exe deploy\deploy_sis.py` |
+| Lint du code Python | `.venv\Scripts\ruff.exe check .` |
+| Compiler le rapport PDF | `.\rapport\build.ps1` |
 
 > Le planning quotidien ne se déclenche que lorsque `dagster.ps1` est lancé (il démarre le démon Dagster).
 
@@ -236,17 +257,17 @@ puis, dans l'interface (<http://localhost:3000>) : **Jobs → wwi_daily_job → 
 
 Fichier : [`ingestion/wwi_pipeline.py`](ingestion/wwi_pipeline.py)
 
-- **28 tables** des schémas `Application`, `Purchasing`, `Sales`, `Warehouse`, nommées
+- **30 tables** (dont 2 tables d'archive temporelles) des schémas `Application`, `Purchasing`, `Sales`, `Warehouse`, nommées
   `<schéma>_<table>` en minuscules (ex. `sales_invoice_lines`).
 - **Chargement incrémental** : les tables possédant `LastEditedWhen` ou `ValidFrom` (tables temporelles)
   ne rechargent que les lignes nouvelles ou modifiées, fusionnées (*merge*) sur la clé primaire.
-  Les autres tables sont remplacées intégralement.
+  Les autres tables (dont les tables `*_Archive`, sans clé primaire) sont remplacées intégralement.
 - **Colonnes exclues** : types spatiaux (`geography`) et binaires (photos, mots de passe hachés).
 - Lecture via SQLAlchemy + pyarrow ; état incrémental conservé par DLT (`~/.dlt/pipelines`).
 
 ### 6.2 Silver — données nettoyées (dbt)
 
-Dossier : [`transform/wwi_dbt/models/silver`](transform/wwi_dbt/models/silver) — **27 tables `slv_*`**.
+Dossier : [`transform/wwi_dbt/models/silver`](transform/wwi_dbt/models/silver) — **29 tables `slv_*`** (dont `slv_stock_items_history` et `slv_customers_history`).
 
 | Règle | Mise en œuvre |
 |---|---|
@@ -295,6 +316,9 @@ erDiagram
 | `dim_supplier` | fournisseur | 13 | catégorie, pays, délai de paiement |
 | `dim_employee` | employé | 19 | dont commerciaux |
 | `dim_city` | ville | 37 940 | État, territoire commercial, pays, continent |
+| `dim_product_history` | version de produit (SCD2) | 671 | évolution des prix |
+| `dim_customer_history` | version de client (SCD2) | 713 | crédit, catégorie, remise |
+| `fact_stock_history` | version du stock (snapshot dbt) | 227+ | historique des niveaux de stock |
 
 Les clés sont les identifiants naturels de la source (`customer_id`, `stock_item_id`…), ce qui
 simplifie les jointures générées par l'IA.
@@ -303,8 +327,8 @@ simplifie les jointures générées par l'IA.
 
 ## 7. Qualité des données
 
-`.\dbt.ps1 build` exécute **170 nœuds** (39 modèles + tests) ; dans Dagster, les tests
-apparaissent comme **129 contrôles qualité** rattachés aux tables.
+`.\dbt.ps1 build` exécute **189 nœuds** (44 modèles, 1 snapshot, 144 tests) ; dans Dagster, ils
+apparaissent comme **75 assets** et **146 contrôles qualité**.
 
 | Type | Exemples |
 |---|---|
@@ -312,6 +336,7 @@ apparaissent comme **129 contrôles qualité** rattachés aux tables.
 | Intégrité référentielle | chaque fait pointe vers une dimension existante |
 | Valeurs autorisées | `direction` ∈ {Entrée, Sortie} |
 | Règles métier | HT + TVA = TTC ; quantités vendues > 0 ; dates couvertes par `dim_date` |
+| Historisation | exactement une version courante par produit et par client |
 | Réconciliation | CA TTC Gold = CA TTC Bronze ; volumes SQL Server = Bronze (`check_bronze.py`) |
 
 ---
@@ -369,14 +394,24 @@ Exemples de questions :
 
 ---
 
-## 10. Limites et pistes d'amélioration
+## 10. Industrialisation
 
-- Le compte d'essai expire après 30 jours / 400 $ de crédits.
-- La couche Bronze conserve la dernière version des lignes ; l'historisation (SCD type 2) pourrait
-  être ajoutée avec les *snapshots* dbt ou les tables d'archive temporelles de SQL Server.
-- `dbt build` reconstruit toutes les tables ; des modèles `incremental` réduiraient le coût à grande échelle.
-- Pistes : déploiement de l'application dans *Streamlit in Snowflake*, modèle sémantique publié
-  comme *semantic view*, alertes Dagster (e-mail / Slack) en cas d'échec, CI GitHub Actions lançant `dbt build`.
+| Amélioration | Mise en œuvre |
+|---|---|
+| **Historisation (SCD2)** | Tables d'archive temporelles de SQL Server ingérées → `dim_product_history` (prix) et `dim_customer_history` ; snapshot dbt `snp_stock_item_holdings` → `fact_stock_history` |
+| **Modèles incrémentaux** | 10 modèles (6 Silver, 4 faits Gold) en `incremental` + `merge` (macro `incremental_filter`) : une exécution sans changement retraite 0 ligne |
+| **Alertes** | `orchestration/alerts.py` : alerte Slack / e-mail à chaque run en échec, contrôles de fraîcheur des tables Gold (26 h) ; moniteur de crédits Snowflake (75 %, 90 %, suspension à 100 %) |
+| **Streamlit in Snowflake** | `deploy/deploy_sis.py` publie l'application dans `WWI_DB.APP.WWI_INSIGHTS`, propriété de `WWI_ANALYST` ; même code qu'en local |
+| **Intégration continue** | `.github/workflows/ci.yml` : ruff + validation YAML, `dbt build` sur un clone zéro copie `WWI_DB_CI_<run>`, redéploiement de l'application sur `main` |
+
+Alertes : renseigner au besoin dans `.env` `SLACK_WEBHOOK_URL` ou `ALERT_EMAIL_TO`, `SMTP_HOST`,
+`SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`.
+
+CI : ajouter les secrets GitHub `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD`
+(*Settings → Secrets and variables → Actions*) et avoir exécuté `snowflake/01_ameliorations.sql`.
+
+Limites restantes : compte d'essai (30 jours, fonctions LLM génériques indisponibles) ; source SQL Server
+locale (en production, l'ingestion tournerait sur un serveur ayant accès à la source).
 
 ---
 
@@ -391,3 +426,18 @@ Exemples de questions :
 | Cortex Analyst : *Invalid semantic model yaml* | Une expression contenant une virgule doit être entre guillemets dans le YAML |
 | Dagster : `manifest.json` introuvable | Lancer `.\dbt.ps1 parse` (ou passer par `.\dagster.ps1`, qui le régénère) |
 | Les scripts `.ps1` sont bloqués | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
+| Dagster : *The dbt executable 'dbt' was not found on PATH* | Corrigé : `definitions.py` ajoute le dossier de l'environnement virtuel au `PATH` |
+| CI : *Insufficient privileges … CREATE DATABASE* | Exécuter `snowflake/01_ameliorations.sql` en `ACCOUNTADMIN` |
+
+---
+
+## 12. Rapport LaTeX
+
+Le rapport complet (45 pages) est dans [`rapport/rapport.pdf`](rapport/rapport.pdf) ; les sources sont
+dans `rapport/` (`rapport.tex` + un fichier par chapitre dans `rapport/chapitres/`, figures dans
+`rapport/figures/`). Pour le recompiler (MiKTeX ou TeX Live requis) :
+
+```bash
+.\rapport\build.ps1
+```
+

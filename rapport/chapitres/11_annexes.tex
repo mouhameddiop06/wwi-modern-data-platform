@@ -1,0 +1,132 @@
+\chapter{Structure du dépôt}
+\label{ann:depot}
+
+Le code source est disponible sur GitHub :
+
+\url{https://github.com/mouhameddiop06/wwi-modern-data-platform}.
+
+\begin{lstlisting}[language={}, numbers=none, caption={Arborescence du projet}]
+projet_pratique_bi/
+|-- .env.example              Modèle des paramètres de connexion
+|-- requirements.txt          Dépendances Python
+|-- pyproject.toml            Configuration du lint (ruff)
+|-- dbt.ps1 / dagster.ps1 / streamlit.ps1   Scripts de lancement
+|-- snowflake/
+|   |-- 00_setup.sql          Entrepôt, base, schémas, rôles, utilisateur
+|   `-- 01_ameliorations.sql  Moniteur de crédits, droits CI, schéma APP
+|-- ingestion/
+|   |-- wwi_pipeline.py       Pipeline DLT SQL Server -> BRONZE
+|   `-- check_bronze.py       Réconciliation des volumes
+|-- transform/wwi_dbt/
+|   |-- dbt_project.yml, profiles.yml
+|   |-- macros/               clean_text, to_amount, dedup, surrogate_key,
+|   |                         incremental_filter, generate_schema_name
+|   |-- models/silver/        29 modèles slv_* + sources
+|   |-- models/gold/          dimensions, faits, historisation + tests
+|   |-- snapshots/            snapshot du niveau de stock
+|   `-- tests/                tests métier personnalisés
+|-- orchestration/
+|   |-- definitions.py        Assets DLT + dbt, job, planning
+|   `-- alerts.py             Alertes d'échec et contrôles de fraîcheur
+|-- app/
+|   |-- streamlit_app.py      Interface utilisateur
+|   |-- cortex_analyst.py     Moteur Text-to-SQL (local / Snowflake)
+|   |-- semantic_model.yaml   Modèle sémantique de la couche GOLD
+|   |-- environment.yml       Dépendances Streamlit in Snowflake
+|   `-- test_questions.py     Test de bout en bout
+|-- deploy/deploy_sis.py      Déploiement Streamlit in Snowflake
+|-- ci/snowflake_clone.py     Clone zéro copie pour la CI
+|-- .github/workflows/ci.yml  Intégration et déploiement continus
+`-- rapport/                  Ce rapport (LaTeX)
+\end{lstlisting}
+
+\chapter{Guide d'installation et commandes}
+\label{ann:commandes}
+
+\section*{Installation}
+\begin{enumerate}
+  \item Restaurer \texttt{WideWorldImporters-Full.bak} dans SQL Server (2016 SP1 ou ultérieur).
+  \item Créer un compte Snowflake (édition Enterprise) et exécuter \texttt{snowflake/00\_setup.sql},
+        puis \texttt{snowflake/01\_ameliorations.sql}, en \texttt{ACCOUNTADMIN}.
+  \item Copier \texttt{.env.example} en \texttt{.env} et renseigner l'identifiant du compte et le mot de
+        passe de l'utilisateur technique.
+  \item Créer l'environnement Python : \texttt{python -m venv .venv}, puis
+        \texttt{.venv\textbackslash Scripts\textbackslash python.exe -m pip install -r requirements.txt}.
+\end{enumerate}
+
+\section*{Commandes principales}
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}X l@{}}
+\toprule
+\textbf{Objectif} & \textbf{Commande} \\
+\midrule
+Ingestion incrémentale Bronze & \texttt{python ingestion/wwi\_pipeline.py} \\
+Rechargement complet & \texttt{python ingestion/wwi\_pipeline.py -{}-full-refresh} \\
+Réconciliation des volumes & \texttt{python ingestion/check\_bronze.py} \\
+Construire et tester Silver et Gold & \texttt{.\textbackslash dbt.ps1 build} \\
+Documentation et lignage dbt & \texttt{.\textbackslash dbt.ps1 docs generate} \\
+Interface Dagster et planning & \texttt{.\textbackslash dagster.ps1} (port 3000) \\
+Application en local & \texttt{.\textbackslash streamlit.ps1} (port 8501) \\
+Test des questions de référence & \texttt{python app/test\_questions.py} \\
+Déploiement Streamlit in Snowflake & \texttt{python deploy/deploy\_sis.py} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\chapter{Extraits de code complémentaires}
+
+\begin{lstlisting}[language=Python, caption={Assets Bronze : relier DLT et dbt dans le lignage Dagster}]
+class BronzeTranslator(DagsterDltTranslator):
+    def get_asset_spec(self, data: DltResourceTranslatorData) -> AssetSpec:
+        spec = super().get_asset_spec(data)
+        return spec.replace_attributes(
+            key=AssetKey(["bronze", snake(data.resource.name)]),  # = clé des sources dbt
+            deps=[],
+            group_name="bronze",
+            kinds={"dlt", "sqlserver", "snowflake"},
+        )
+
+@dlt_assets(dlt_source=wwi_source(), dlt_pipeline=make_pipeline(progress=None),
+            name="wwi_bronze", dagster_dlt_translator=BronzeTranslator())
+def bronze_assets(context: AssetExecutionContext, dlt: DagsterDltResource):
+    yield from dlt.run(context=context)
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={Job quotidien avec reprise sur erreur}]
+wwi_daily_job = define_asset_job(
+    name="wwi_daily_job",
+    selection=AssetSelection.all(),
+    op_retry_policy=RetryPolicy(max_retries=2, delay=60),  # reprise sur erreur
+)
+wwi_daily_schedule = ScheduleDefinition(
+    name="wwi_daily_schedule", job=wwi_daily_job,
+    cron_schedule="0 6 * * *", execution_timezone="Africa/Dakar",
+    default_status=DefaultScheduleStatus.RUNNING,
+)
+\end{lstlisting}
+
+\begin{lstlisting}[language=SQL, caption={Dimension produit historisée (SCD2)}]
+select
+    h.stock_item_version_id, h.stock_item_id,
+    h.stock_item_name as product_name, h.unit_price, h.recommended_retail_price,
+    h.valid_from,
+    case when h.valid_to >= '9999-01-01' then null else h.valid_to end as valid_to,
+    h.valid_to >= '9999-01-01' as is_current,
+    row_number() over (partition by h.stock_item_id order by h.valid_from) as version_number
+from {{ ref('slv_stock_items_history') }} h
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={Appel de Cortex Analyst dans Streamlit in Snowflake}]
+def ask(self, messages: list[dict]) -> AnalystAnswer:
+    resp = _snowflake.send_snow_api_request(
+        "POST", "/api/v2/cortex/analyst/message", {}, {},
+        {"messages": messages, "semantic_model": SEMANTIC_MODEL},
+        None, 120_000,
+    )
+    body = json.loads(resp["content"])
+    if resp["status"] >= 400:
+        raise RuntimeError(f"Cortex Analyst a répondu {resp['status']}")
+    return parse_answer(body)
+\end{lstlisting}

@@ -1,0 +1,134 @@
+\chapter{Industrialisation de la plateforme}
+\label{ch:industrialisation}
+
+Une fois la chaîne fonctionnelle, plusieurs limites ont été identifiées : absence d'historique,
+reconstruction complète de toutes les tables à chaque exécution, application dépendante d'un poste
+local, absence d'alerte en cas d'incident et validation manuelle des modifications. Ce chapitre présente
+les réponses apportées. L'historisation ayant été décrite à la section~\ref{sec:scd2}, il traite les
+quatre autres points.
+
+\section{Traitements incrémentaux}
+\label{sec:incremental}
+
+Dans la version initiale, \texttt{dbt build} reconstruisait intégralement toutes les tables. Ce coût,
+négligeable sur WWI, devient prohibitif sur des volumes réels. Les \textbf{dix modèles les plus
+volumineux} sont désormais matérialisés en mode \texttt{incremental} avec la stratégie \texttt{merge}
+(tableau~\ref{tab:incremental}).
+
+\begin{table}[H]
+\centering
+\caption{Modèles incrémentaux}
+\label{tab:incremental}
+\begin{tabular}{@{}l l l@{}}
+\toprule
+\textbf{Couche} & \textbf{Modèle} & \textbf{Clé de fusion} \\
+\midrule
+\multirow{6}{*}{Silver} & \texttt{slv\_invoice\_lines} & \texttt{invoice\_line\_id} \\
+ & \texttt{slv\_invoices} & \texttt{invoice\_id} \\
+ & \texttt{slv\_order\_lines} & \texttt{order\_line\_id} \\
+ & \texttt{slv\_orders} & \texttt{order\_id} \\
+ & \texttt{slv\_stock\_item\_transactions} & \texttt{stock\_item\_transaction\_id} \\
+ & \texttt{slv\_customer\_transactions} & \texttt{customer\_transaction\_id} \\
+\midrule
+\multirow{4}{*}{Gold} & \texttt{fact\_sales} & \texttt{invoice\_line\_id} \\
+ & \texttt{fact\_orders} & \texttt{order\_line\_id} \\
+ & \texttt{fact\_stock\_movements} & \texttt{stock\_item\_transaction\_id} \\
+ & \texttt{fact\_customer\_transactions} & \texttt{customer\_transaction\_id} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Une macro \texttt{incremental\_filter} ne retient que les lignes dont la date de dernière modification
+est postérieure à la plus récente déjà présente dans la table cible. Pour les faits issus d'une jointure
+en-tête/ligne, la date retenue est la plus récente des deux (\texttt{GREATEST}), de sorte qu'une
+modification de l'en-tête (par exemple la date de livraison d'une facture) est aussi propagée.
+
+\begin{resultbox}[title=Vérification]
+Après une reconstruction complète (\texttt{dbt build -{}-full-refresh}), une exécution normale des dix
+modèles incrémentaux a traité \textbf{0 ligne} au lieu de 228\,265 pour \texttt{fact\_sales} : seules les
+modifications seront désormais retraitées.
+\end{resultbox}
+
+\section{Alertes et supervision}
+
+\subsection{Alertes Dagster}
+Le module \texttt{orchestration/alerts.py} ajoute deux capteurs actifs par défaut :
+\begin{itemize}
+  \item \texttt{wwi\_run\_failure\_alert} : un \emph{run failure sensor} déclenché dès qu'un run échoue.
+        Il construit un message (job, identifiant du run, étapes en échec, erreur, lien vers
+        l'interface) et l'envoie sur \textbf{Slack} (webhook) et/ou par \textbf{e-mail} (SMTP) selon
+        la configuration du fichier \texttt{.env} ; à défaut, l'alerte est journalisée ;
+  \item \texttt{gold\_freshness\_sensor} : des \textbf{contrôles de fraîcheur} vérifient que les tables
+        Gold principales ont été rafraîchies au cours des 26 dernières heures (exécution quotidienne
+        plus une marge de deux heures). Un planning bloqué ou un démon arrêté est ainsi détecté.
+\end{itemize}
+
+\subsection{Maîtrise des coûts Snowflake}
+Un \textbf{moniteur de ressources} (\texttt{WWI\_CREDIT\_MONITOR}) est associé à l'entrepôt
+\texttt{WWI\_WH} : il envoie une notification à 75\,\% et 90\,\% du quota mensuel de crédits, suspend
+l'entrepôt à 100\,\% et l'arrête immédiatement à 110\,\%. Il protège en particulier les crédits limités
+du compte d'essai.
+
+\section{Déploiement dans Streamlit in Snowflake}
+
+L'application, initialement exécutée sur le poste du développeur, a été rendue déployable dans
+\textbf{Streamlit in Snowflake}. Ce mode d'hébergement présente plusieurs avantages :
+\begin{itemize}
+  \item aucun serveur ni identifiant à gérer : l'application utilise la session de l'utilisateur
+        connecté à Snowsight ;
+  \item les données ne quittent pas Snowflake ;
+  \item le partage se fait par les mécanismes de droits de Snowflake.
+\end{itemize}
+
+Le script \texttt{deploy/deploy\_sis.py} automatise le déploiement :
+\begin{enumerate}
+  \item création du schéma \texttt{WWI\_DB.APP} et attribution au rôle \texttt{WWI\_ANALYST} des droits
+        de création de stage et d'application ;
+  \item création d'un stage interne et envoi des fichiers de l'application (\texttt{PUT}) : code,
+        modèle sémantique, logo et fichier \texttt{environment.yml} des dépendances ;
+  \item création de l'objet \texttt{STREAMLIT WWI\_DB.APP.WWI\_INSIGHTS} avec l'entrepôt
+        \texttt{WWI\_WH}.
+\end{enumerate}
+
+L'application appartient au rôle \texttt{WWI\_ANALYST} : elle s'exécute donc avec ses seuls droits de
+lecture sur Gold. Le même code source fonctionne dans les deux environnements, le moteur détectant la
+présence du module interne \texttt{\_snowflake} pour choisir entre l'appel REST local et l'API interne
+\texttt{\_snowflake.send\_snow\_api\_request}.
+
+\section{Intégration et déploiement continus}
+
+Le dépôt est hébergé sur GitHub. Le workflow \texttt{.github/workflows/ci.yml} s'exécute à chaque
+\emph{push} et à chaque \emph{pull request} (figure~\ref{fig:ci}).
+
+\begin{figure}[H]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[node distance=1.1cm]
+  \node[box, fill=gray!10] (push) {\textbf{push / PR}\\ GitHub};
+  \node[box, fill=blue!8, right=of push, text width=3.3cm] (q) {\textbf{Qualité}\\ \scriptsize ruff, compilation,\\ validation YAML};
+  \node[box, fill=snow!15, right=of q, text width=3.5cm] (d) {\textbf{dbt build}\\ \scriptsize sur clone zéro copie\\ \texttt{WWI\_DB\_CI\_<run>}};
+  \node[box, fill=green!10, right=of d, text width=3.3cm] (dep) {\textbf{Déploiement}\\ \scriptsize Streamlit in Snowflake\\ (branche \texttt{main})};
+  \draw[flow] (push) -- (q);
+  \draw[flow] (q) -- (d);
+  \draw[flow] (d) -- (dep);
+  \node[below=0.35cm of d, font=\scriptsize, text width=4.5cm, align=center] {le clone est supprimé à la fin,\\ même en cas d'échec};
+\end{tikzpicture}}
+\caption{Chaîne d'intégration et de déploiement continus}
+\label{fig:ci}
+\end{figure}
+
+\begin{enumerate}
+  \item \textbf{Qualité} : analyse statique du code Python (\texttt{ruff}), compilation de tous les
+        scripts, validation syntaxique de tous les fichiers YAML et de la structure du modèle sémantique.
+  \item \textbf{dbt} : la base de production est clonée par \textbf{clonage zéro copie}
+        (\texttt{CREATE DATABASE WWI\_DB\_CI\_<run> CLONE WWI\_DB}) : le clone est instantané et ne
+        duplique aucune donnée. \texttt{dbt build} y est exécuté (modèles, snapshot et tests), puis le
+        clone est supprimé. Les modifications sont ainsi testées sur des données réelles sans jamais
+        toucher à la production. La base cible étant paramétrée par la variable
+        \texttt{SNOWFLAKE\_DATABASE}, aucun code n'est spécifique à la CI.
+  \item \textbf{Déploiement} : sur la branche \texttt{main}, si les étapes précédentes réussissent,
+        l'application Streamlit in Snowflake est redéployée.
+\end{enumerate}
+
+Les identifiants Snowflake sont stockés dans les \emph{secrets} chiffrés du dépôt GitHub, jamais dans
+le code.

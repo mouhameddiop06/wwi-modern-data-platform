@@ -1,0 +1,99 @@
+% ---------------------------------------------------------------- remerciements
+\chapter*{Remerciements}
+\addcontentsline{toc}{chapter}{Remerciements}
+
+Je tiens à exprimer ma profonde gratitude à \textbf{\encadrant}, enseignant au Département de
+Mathématiques et Informatique de la Faculté des Sciences et Techniques, pour la proposition de ce
+sujet, la qualité de son encadrement et la pertinence de ses orientations tout au long de ce projet.
+
+Mes remerciements s'adressent également à l'ensemble du corps professoral de la section Informatique
+de l'Université Cheikh Anta Diop de Dakar, et particulièrement aux enseignants du Master II option
+Business Intelligence, pour les connaissances transmises durant ce cursus.
+
+Je remercie enfin ma famille et mes camarades de promotion pour leur soutien et leurs encouragements.
+
+% ---------------------------------------------------------------- résumé
+\chapter*{Résumé}
+\addcontentsline{toc}{chapter}{Résumé}
+
+Les organisations disposent de volumes croissants de données opérationnelles, mais leur exploitation
+reste freinée par la complexité technique des outils d'interrogation : sans maîtrise du langage SQL, les
+décideurs dépendent des équipes techniques pour obtenir le moindre indicateur.
+
+Ce projet met en œuvre une \textbf{Modern Data Platform} complète sur le jeu de données de référence
+\emph{Wide World Importers} de Microsoft. Les données transactionnelles de \textbf{SQL Server} sont
+ingérées de manière incrémentale dans \textbf{Snowflake} par \textbf{DLT}, puis organisées selon une
+\textbf{architecture Médaillon} : une couche \emph{Bronze} brute (30 tables), une couche \emph{Silver}
+nettoyée (29 modèles) et une couche \emph{Gold} modélisée en étoile (15 tables, dont trois historisées
+en SCD de type 2). Les transformations sont développées, documentées et testées avec \textbf{dbt}
+(189 nœuds, dont plus de 140 tests de qualité), et l'ensemble est orchestré par \textbf{Dagster}
+(75 assets, 146 contrôles, exécution quotidienne avec reprise sur erreur et alertes).
+
+Une application \textbf{Streamlit} permet enfin aux décideurs d'interroger la couche Gold
+\textbf{en langage naturel} : les questions, posées en français, sont traduites en SQL par
+\textbf{Snowflake Cortex Analyst} grâce à un modèle sémantique décrivant les tables, leurs relations,
+leurs synonymes métier et leurs indicateurs. La requête générée est contrôlée (lecture seule), exécutée
+avec un rôle aux droits restreints, puis restituée sous forme de tableau et de graphique. L'application
+est déployée à la fois en local et dans \emph{Streamlit in Snowflake}, et une chaîne d'intégration
+continue GitHub Actions valide chaque modification sur un clone « zéro copie » de l'entrepôt.
+
+\textbf{Mots-clés :} Modern Data Stack, architecture Médaillon, Snowflake, DLT, dbt, Dagster,
+modélisation dimensionnelle, SCD2, Text-to-SQL, Cortex Analyst, LLM, Streamlit.
+
+% ---------------------------------------------------------------- abstract
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+\begin{otherlanguage}{english}
+Organisations accumulate ever-growing volumes of operational data, yet business users who do not master
+SQL still depend on technical teams to obtain even simple indicators.
+
+This project builds an end-to-end \textbf{Modern Data Platform} on Microsoft's \emph{Wide World
+Importers} sample database. Transactional data from \textbf{SQL Server} is incrementally ingested into
+\textbf{Snowflake} with \textbf{DLT} and organised following a \textbf{Medallion architecture}
+(Bronze, Silver and a Gold star schema including type-2 slowly changing dimensions). Transformations
+are versioned, documented and tested with \textbf{dbt}, and the whole pipeline is orchestrated by
+\textbf{Dagster} with daily scheduling, retries, freshness checks and failure alerts.
+
+A \textbf{Streamlit} application lets decision makers query the Gold layer in \textbf{natural
+language}: French questions are translated into SQL by \textbf{Snowflake Cortex Analyst} using a
+semantic model, executed under a read-only role, and rendered as tables and charts. The application runs
+locally and in \emph{Streamlit in Snowflake}, and a GitHub Actions pipeline validates every change on a
+zero-copy clone of the warehouse.
+
+\textbf{Keywords:} Modern Data Stack, Medallion architecture, Snowflake, DLT, dbt, Dagster,
+dimensional modelling, SCD2, Text-to-SQL, Cortex Analyst, LLM, Streamlit.
+\end{otherlanguage}
+
+% ---------------------------------------------------------------- sigles
+\chapter*{Liste des sigles et abréviations}
+\addcontentsline{toc}{chapter}{Liste des sigles et abréviations}
+
+\begin{longtable}{@{}p{3cm}p{11.5cm}@{}}
+\toprule
+\textbf{Sigle} & \textbf{Signification} \\
+\midrule
+\endhead
+BI & Business Intelligence (informatique décisionnelle) \\
+CA & Chiffre d'affaires \\
+CI/CD & Intégration continue / Déploiement continu \\
+DAG & Directed Acyclic Graph (graphe orienté acyclique) \\
+dbt & data build tool \\
+DLT & data load tool \\
+ELT & Extract, Load, Transform \\
+ETL & Extract, Transform, Load \\
+HT / TTC & Hors taxes / Toutes taxes comprises \\
+KPI & Key Performance Indicator (indicateur clé de performance) \\
+LLM & Large Language Model (grand modèle de langage) \\
+MDP & Modern Data Platform \\
+OLAP & Online Analytical Processing \\
+OLTP & Online Transaction Processing \\
+RBAC & Role-Based Access Control \\
+SCD & Slowly Changing Dimension (dimension à évolution lente) \\
+SiS & Streamlit in Snowflake \\
+SQL & Structured Query Language \\
+TVA & Taxe sur la valeur ajoutée \\
+WWI & Wide World Importers \\
+YAML & YAML Ain't Markup Language \\
+\bottomrule
+\end{longtable}

@@ -1,3 +1,10 @@
+{{ config(
+    materialized='incremental',
+    unique_key='customer_transaction_id',
+    incremental_strategy='merge',
+    on_schema_change='append_new_columns'
+) }}
+
 select
     customer_transaction_id,
     customer_id,
@@ -13,4 +20,5 @@ select
     coalesce(is_finalized, false)           as is_finalized,
     last_edited_when
 from {{ source('bronze', 'sales_customer_transactions') }}
+{{ incremental_filter() }}
 {{ dedup('customer_transaction_id', 'last_edited_when') }}
